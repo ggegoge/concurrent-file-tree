@@ -49,7 +49,7 @@ Tree* new_dir(const char* dname)
   char* name = strdup(dname);
 
   if (!tree || !dname)
-    exit(1);
+    return NULL;
 
   tree->dir_name = name;
   tree->subdirs = hmap_new();
@@ -144,6 +144,9 @@ int tree_create(Tree* tree, const char* path)
 
   subdir = new_dir(last_component);
 
+  if (!subdir)
+    return ENOMEM;
+
   /* Add the newly created subdirectory as a parent's child */
   hmap_insert(parent->subdirs, subdir->dir_name, subdir);
   return 0;
@@ -218,6 +221,10 @@ int tree_move(Tree* tree, const char* source, const char* target)
   /* remove ourselves from one map and add to another */
   hmap_remove(source_parent->subdirs, source_dir_name);
   target_dir = new_dir(target_dir_name);
+
+  if (!target_dir)
+    return ENOMEM;
+
   hmap_insert(target_parent->subdirs, target_dir->dir_name, target_dir);
 
   /* move the contents now and get rid of the old dir */
