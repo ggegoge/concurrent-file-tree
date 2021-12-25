@@ -16,7 +16,7 @@ char* tree_list(Tree* tree, const char* path);
 /* Create a new subdirectory. */
 int tree_create(Tree* tree, const char* path);
 
-/* Remove a subsidrectory. */
+/* Remove a subdirectory. */
 int tree_remove(Tree* tree, const char* path);
 
 /* Move a soruce subdirectory to a new target location. */

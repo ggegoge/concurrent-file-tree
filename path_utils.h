@@ -1,3 +1,7 @@
+
+#ifndef _PATH_UTILS_H_
+#define _PATH_UTILS_H_
+
 #include <stdbool.h>
 
 #include "HashMap.h"
@@ -58,3 +62,5 @@ const char** make_map_contents_array(HashMap* map);
  * The result has no trailing comma. An empty map yields an empty string.
  * The caller should free the result. */
 char* make_map_contents_string(HashMap* map);
+
+#endif  /* _PATH_UTILS_H_ */
