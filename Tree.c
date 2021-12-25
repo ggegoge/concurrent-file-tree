@@ -114,41 +114,6 @@ char* tree_list(Tree* tree, const char* path)
   return make_map_contents_string(dir->subdirs);
 }
 
-/* VERSION OF CREATE NOT USING PATH_UTILS: */
-void get_last_component(const char* path, char* last);
-
-/* TODO -- i want to find the parent directory, then create a new dir with its
- * name being the last component from the path and add it to the hashmap.
- * how to devise the function for finding the parent then? split path but
- * keeping the last component... huh. */
-int tree_create_pdir(Tree* tree, const char* path)
-{
-  Tree* parent;
-  Tree* dir;
-  Tree* subdir;
-  char* last_component;
-
-  if (!is_path_valid(path))
-    return EINVAL;
-
-  find_parent_dir(tree, &parent, &dir, path);
-
-  /* The parent to the new directory does not exist. */
-  if (!parent)
-    return ENOENT;
-
-  /* The directory already exists. */
-  if (dir)
-    return EEXIST;
-
-  get_last_component(path, last_component);
-  subdir = new_dir(last_component);
-  hmap_insert(parent->subdirs, last_component, subdir);
-
-  return 0;
-}
-
-/* VERSION OF CREATE THAT INDEED USES PATH_UTILS.H */
 int tree_create(Tree* tree, const char* path)
 {
   Tree* parent;
