@@ -8,17 +8,20 @@
 // Max length of folder name (excluding terminating null character).
 #define MAX_FOLDER_NAME_LENGTH 255
 
-// Return whether a path is valid.
-// Valid paths are '/'-separated sequences of folder names, always starting and ending with '/'.
-// Valid paths have length at most MAX_PATH_LENGTH (and at least 1). Valid folder names are are
-// sequences of 'a'-'z' ASCII characters, of length from 1 to MAX_FOLDER_NAME_LENGTH.
+// Return whether a path is valid.  Valid paths are '/'-separated sequences of
+// folder names, always starting and ending with '/'.  Valid paths have length
+// at most MAX_PATH_LENGTH (and at least 1). Valid folder names are are
+// sequences of 'a'-'z' ASCII characters, of length from 1 to
+// MAX_FOLDER_NAME_LENGTH.
 bool is_path_valid(const char* path);
 
 // Return the subpath obtained by removing the first component.
 // Args:
 // - `path`: should be a valid path (see `is_path_valid`).
-// - `component`: if not NULL, should be a buffer of size at least MAX_FOLDER_NAME_LENGTH + 1.
-//    Then the first component will be copied there (without any '/' characters).
+
+// - `component`: if not NULL, should be a buffer of size at least
+//    MAX_FOLDER_NAME_LENGTH + 1.  Then the first component will be copied there
+//    (without any '/' characters).
 // If path is "/", returns NULL and leaves `component` unchanged.
 // Otherwise the returns a pointer into `path`, representing a valid subpath.
 //
@@ -33,8 +36,9 @@ const char* split_path(const char* path, char* component);
 // The caller should free the result, unless it is NULL.
 // Args:
 // - `path`: should be a valid path (see `is_path_valid`).
-// - `component`: if not NULL, should be a buffer of size at least MAX_FOLDER_NAME_LENGTH + 1.
-//    Then the last component will be copied there (without any '/' characters).
+// - `component`: if not NULL, should be a buffer of size at least
+//    MAX_FOLDER_NAME_LENGTH + 1.  Then the last component will be copied there
+//    (without any '/' characters).
 // If path is "/", returns NULL and leaves `component` unchanged.
 // Otherwise the result is a valid path.
 char* make_path_to_parent(const char* path, char* component);

@@ -1,4 +1,6 @@
-#pragma once
+#ifndef _HASH_MAP_H_
+#define _HASH_MAP_H_
+
 #include <stdbool.h>
 #include <sys/types.h>
 
@@ -49,9 +51,12 @@ HashMapIterator hmap_iterator(HashMap* map);
 //     while (hmap_next(map, &it, &key, &value))
 //         foo(key, value);
 // ```
-bool hmap_next(HashMap* map, HashMapIterator* it, const char** key, void** value);
+bool hmap_next(HashMap* map, HashMapIterator* it, const char** key,
+               void** value);
 
 struct HashMapIterator {
-    int bucket;
-    void* pair;
+  int bucket;
+  void* pair;
 };
+
+#endif  /* _HASH_MAP_H_ */
