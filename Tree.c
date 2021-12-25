@@ -23,13 +23,14 @@ struct Tree {
 
 /**
  * A helper function for creating a new empty directory with a given name.
- * It takes ownership of memory allocated for the name string.
+ * Copies the dname string.
  */
-Tree* new_dir(char* name)
+Tree* new_dir(const char* dname)
 {
   Tree* tree = malloc(sizeof(Tree));
-
-  if (!tree)
+  char* name = strdup(dname);
+  
+  if (!tree || !dname)
     exit(1);
 
   tree->dir_name = name;
@@ -40,8 +41,7 @@ Tree* new_dir(char* name)
 
 Tree* tree_new()
 {
-  char* name = strdup(ROOT_PATH);
-  return new_dir(name);
+  return new_dir(ROOT_PATH);
 }
 
 /* Free all the memory stored by a tree. Does it in a recursive manner. */
@@ -120,7 +120,6 @@ int tree_create(Tree* tree, const char* path)
   Tree* subdir;
   char* parent_path;
   char last_component[MAX_FOLDER_NAME_LENGTH + 1];
-  char* subdir_name;
 
   if (!is_path_valid(path))
     return EINVAL;
@@ -142,11 +141,12 @@ int tree_create(Tree* tree, const char* path)
   if (hmap_get(parent->subdirs, last_component))
     return EEXIST;
 
-  subdir_name = strdup(last_component);
-  subdir = new_dir(subdir_name);
+  subdir = new_dir(last_component);
 
   /* add the newly created subdirectory as a parent's child */
-  hmap_insert(parent->subdirs, subdir_name, new_dir);
+  hmap_insert(parent->subdirs, subdir->dir_name, subdir);
+  return 0;
+}
   return 0;
 }
 
