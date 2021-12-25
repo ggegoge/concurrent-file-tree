@@ -66,7 +66,6 @@ Tree* find_dir(Tree* root, const char* path)
 {
   char component[MAX_FOLDER_NAME_LENGTH + 1];
   const char* subpath = path;
-  assert(is_path_valid(path));
 
   while ((subpath = split_path(subpath, component))) {
     if (!root)
@@ -80,7 +79,11 @@ Tree* find_dir(Tree* root, const char* path)
 
 char* tree_list(Tree* tree, const char* path)
 {
-  Tree* dir = find_dir(tree, path);
+  Tree* dir;
+  if (!is_path_valid(path))
+    return 0;
+  
+  dir = find_dir(tree, path);
 
   if (!dir)
     return 0;
