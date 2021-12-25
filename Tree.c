@@ -161,7 +161,6 @@ int remove(Tree* tree, const char* parent_path, const char* dir_name, Tree** sub
 int tree_remove(Tree* tree, const char* path)
 {
   Tree* parent;
-  Tree* dir;
   Tree* subdir;
   char* parent_path;
   char last_component[MAX_FOLDER_NAME_LENGTH + 1];
