@@ -1,6 +1,8 @@
+#include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "Tree.h"
 
@@ -11,10 +13,10 @@ void simple_tree_test()
   int e1 = tree_create(root, "/a/");
   int e2 = tree_create(root, "/b/");
 
-  if (e1 || e2)
-    printf("e1 = %d, e2 = %d\n", e1, e2);
+  assert(!e1 && !e2);
 
   char* listing = tree_list(root, "/");
+  assert(strcmp(listing, "a,b") == 0);
   printf("\t%s\n", listing);
   free(listing);
   int e3 = tree_create(root, "/a/b/");
@@ -22,36 +24,40 @@ void simple_tree_test()
   int e5 = tree_create(root, "/a/wyjebany/");
 
   listing = tree_list(root, "/a/");
+  assert(strcmp(listing, "b,c,wyjebany") == 0);
   printf("\t%s\n", listing);
   free(listing);
 
   int e6 = tree_move(root, "/a/", "/b/chuuj/");
 
-  if (e3 || e4 || e5 || e6)
-    printf("e3 = %d, e4 = %d, e5 = %d\n", e3, e4, e5);
+  assert(!e3 && !e4 && !e5 && !e6);
 
   listing = tree_list(root, "/");
+  assert(strcmp(listing, "b") == 0);
   printf("\t%s\n", listing);
   free(listing);
 
   listing = tree_list(root, "/a/");
+  assert(!listing);
   printf("\t%s\n", listing);
   free(listing);
 
   listing = tree_list(root, "/b/");
+  assert(strcmp(listing, "chuuj") == 0);
   printf("\t%s\n", listing);
   free(listing);
 
   listing = tree_list(root, "/b/chuuj/");
+  assert(strcmp(listing, "b,c,wyjebany") == 0);
   printf("\t%s\n", listing);
   free(listing);
 
   int e7 = tree_remove(root, "/b/chuuj/wyjebany/");
 
-  if (e7)
-    printf("e7 = %d\n", e7);
-
+  assert(!e7);
+  
   listing = tree_list(root, "/b/chuuj/");
+  assert(strcmp(listing, "b,c") == 0);
   printf("\t%s\n", listing);
   free(listing);
 
