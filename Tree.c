@@ -168,7 +168,7 @@ int tree_remove(Tree* tree, const char* path)
   
   if (!is_path_valid(path))
     return EINVAL;
-  else if (strcmp(path, ROOT_PATH))
+  else if (strcmp(path, ROOT_PATH) == 0)
     return EBUSY;
 
   parent_path = make_path_to_parent(path, last_component);
@@ -184,8 +184,50 @@ int tree_remove(Tree* tree, const char* path)
 
   hmap_remove(parent->subdirs, last_component);
   tree_free(subdir);
-  
   return 0;
 }
 
-int tree_move(Tree* tree, const char* source, const char* target);
+int tree_move(Tree* tree, const char* source, const char* target)
+{
+  Tree* source_parent;
+  char* source_parent_path;
+  Tree* source_dir;
+  char source_dir_name[MAX_FOLDER_NAME_LENGTH + 1];
+  Tree* target_parent;
+  char* target_parent_path;
+  Tree* target_dir;
+  char target_dir_name[MAX_FOLDER_NAME_LENGTH + 1];
+
+  if (!is_path_valid(source) || !is_path_valid(target))
+    return EINVAL;
+  else if (strcmp(source, ROOT_PATH) == 0)
+    return EBUSY;
+
+  source_parent_path = make_path_to_parent(source, source_dir_name);
+  target_parent_path = make_path_to_parent(target, target_dir_name);
+  source_parent = find_dir(tree, source_parent_path);
+  target_parent = find_dir(tree, target_parent_path);
+
+  if (!source_parent || !target_parent)
+    return ENOENT;
+
+  source_dir = hmap_get(source_parent->subdirs, source_dir_name);
+
+  if (!source_dir)
+    return ENOENT;
+
+  if (hmap_get(target_parent->subdirs, target_dir_name))
+    return EEXIST;
+
+  /* remove ourselves from one map and add to another */
+  hmap_remove(source_parent->subdirs, source_dir_name);
+  target_dir = new_dir(target_dir_name);
+  hmap_insert(target_parent->subdirs, target_dir->dir_name, target_dir);
+
+  /* move the contents now */
+  HashMap* tmp = target_dir->subdirs;
+  target_dir->subdirs = source_dir->subdirs;
+  source_dir->subdirs = tmp;
+  
+  return 0;
+}
