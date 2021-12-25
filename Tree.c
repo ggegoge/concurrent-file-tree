@@ -5,6 +5,7 @@
  */
 
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -79,6 +80,7 @@ Tree* find_dir(Tree* root, const char* path)
 
 char* tree_list(Tree* tree, const char* path)
 {
+  printf("ls %s\n", path);
   Tree* dir;
   if (!is_path_valid(path))
     return 0;
@@ -104,6 +106,7 @@ char* tree_list(Tree* tree, const char* path)
 
 int tree_create(Tree* tree, const char* path)
 {
+  printf("mdkir %s\n", path);
   Tree* parent;
   Tree* subdir;
   char* parent_path;
@@ -143,26 +146,27 @@ int tree_create(Tree* tree, const char* path)
  * wiec nie ma opcji tego uwspólnić, ja pierydoleeeeeee
  *
  * kupa */
-int remove(Tree* tree, const char* parent_path, const char* dir_name, Tree** subdir)
-{
-  Tree* parent = find_dir(tree, parent_path);
-  *subdir = hmap_get(parent->subdirs, dir_name);
-
-  if (!*subdir)
-    return ENOENT;
-  
-  if (hmap_size((*subdir)->subdirs) > 0) /* chuj */
-    return ENOTEMPTY;
-
-  hmap_remove(parent->subdirs, dir_name);
-
-  return 0;
-}
+/* int remove(Tree* tree, const char* parent_path, const char* dir_name, Tree** subdir)
+ * {
+ *   Tree* parent = find_dir(tree, parent_path);
+ *   *subdir = hmap_get(parent->subdirs, dir_name);
+ * 
+ *   if (!*subdir)
+ *     return ENOENT;
+ *   
+ *   if (hmap_size((*subdir)->subdirs) > 0) /\* chuj *\/
+ *     return ENOTEMPTY;
+ * 
+ *   hmap_remove(parent->subdirs, dir_name);
+ * 
+ *   return 0;
+ * } */
 
 /* we find the parent, inside we find the child, check if it is empty, remove
  * the dir from the map and then from the memory. */
 int tree_remove(Tree* tree, const char* path)
 {
+  printf("rm %s\n", path);
   Tree* parent;
   Tree* subdir;
   char* parent_path;
@@ -191,6 +195,7 @@ int tree_remove(Tree* tree, const char* path)
 
 int tree_move(Tree* tree, const char* source, const char* target)
 {
+  printf("mv %s %s\n", source, target);
   Tree* source_parent;
   char* source_parent_path;
   Tree* source_dir;
