@@ -4,10 +4,13 @@
  */
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <pthread.h>
+
 #include <assert.h>
 
 #include "HashMap.h"
@@ -33,8 +36,19 @@
 /** This is the root directory name. */
 #define ROOT_PATH "/"
 
-/** This is a recursive data structure representing a directory tree. */
+/**
+ * This is a recursive data structure representing a directory tree.
+ * One mutex and two conditionals per node. We will do this the following way:
+ * readers & writers but with listers & anything-else'ers.
+ *
+ * Also: if there are changes somewhere then you shouldn't proceed to visit its
+ * descendants until those take place.
+ */
 struct Tree {
+  pthread_mutex_t mutex;
+  pthread_cond_t cond;
+  size_t wwait;
+  size_t rwait;
   char* dir_name;
   HashMap* subdirs;
 };
@@ -53,7 +67,10 @@ Tree* new_dir(const char* dname)
 
   tree->dir_name = name;
   tree->subdirs = hmap_new();
-
+  pthread_mutex_init(&tree->mutex, 0);
+  pthread_cond_init(&tree->cond, 0);
+  tree->wwait = tree->rwait = 0;
+  
   return tree;
 }
 
