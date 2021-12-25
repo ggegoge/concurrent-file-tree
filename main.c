@@ -58,8 +58,16 @@ void simple_tree_test()
   tree_free(root);
 }
 
+/* erroneous commands and checking whether correct errnos are returned
+ * TODO */
+void errors_tree_test()
+{
+
+}
+
 int main(void)
 {
   simple_tree_test();
+  errors_tree_test();
   return 0;
 }
