@@ -210,6 +210,9 @@ int tree_move(Tree* tree, const char* source, const char* target)
   source_parent = find_dir(tree, source_parent_path);
   target_parent = find_dir(tree, target_parent_path);
 
+  free(source_parent_path);
+  free(target_parent_path);
+  
   if (!source_parent || !target_parent)
     return ENOENT;
 
@@ -230,6 +233,7 @@ int tree_move(Tree* tree, const char* source, const char* target)
   HashMap* tmp = target_dir->subdirs;
   target_dir->subdirs = source_dir->subdirs;
   source_dir->subdirs = tmp;
-  
+
+  tree_free(source_dir);
   return 0;
 }
