@@ -78,32 +78,6 @@ Tree* find_dir(Tree* root, const char* path)
   return root;
 }
 
-/**
- * Find a directory specified by a path. The directory will be saved under `dir`
- * and its parent will be saved under `parent`. In case the `dir` does not exist
- * then it will be set to `NULL`. In case even the parent directory does not
- * exist then it will be set to `NULL` as well.
- */
-void find_parent_dir(Tree* root, Tree** parent, Tree** dir, const char* path)
-{
-  char component[MAX_FOLDER_NAME_LENGTH + 1];
-  const char* subpath = path;
-  *parent = NULL;
-  *dir = root;
-
-  while ((subpath = split_path(subpath, component))) {
-    /* the path has not yet ended yet we have run out of directories to visit */
-    if (!root) {
-      *parent = *dir;
-      return;
-    }
-
-    root = hmap_get(root->subdirs, component);
-    *parent = *dir;
-    *dir = root;
-  }
-}
-
 char* tree_list(Tree* tree, const char* path)
 {
   Tree* dir = find_dir(tree, path);
@@ -113,6 +87,17 @@ char* tree_list(Tree* tree, const char* path)
 
   return make_map_contents_string(dir->subdirs);
 }
+
+/* TODO: the three fnctions
+ *   1) tree_create
+ *   2) tree_remove
+ *   3) tree_move
+ * have some striking similairities (they all access the parent and then do
+ * something with it). Can we somehow refactor that? I'm sure we can...
+ * But returning errnos in various places makes it wearisome af. */
+
+/* find parent and a dir */
+/* void find_parent_dir(Tree* tree, const char* path, Tree** parent, Tree** subdir); */
 
 int tree_create(Tree* tree, const char* path)
 {
@@ -147,6 +132,27 @@ int tree_create(Tree* tree, const char* path)
   hmap_insert(parent->subdirs, subdir->dir_name, subdir);
   return 0;
 }
+
+/**
+ * Remove directory `dir_name` from `parent_path`, save the removed one under
+ * subdir */
+/* KUrwa nie moge tego uzyc, bo remove ma sprawdzian pustosci, a move juz nie,
+ * wiec nie ma opcji tego uwspólnić, ja pierydoleeeeeee
+ *
+ * kupa */
+int remove(Tree* tree, const char* parent_path, const char* dir_name, Tree** subdir)
+{
+  Tree* parent = find_dir(tree, parent_path);
+  *subdir = hmap_get(parent->subdirs, dir_name);
+
+  if (!*subdir)
+    return ENOENT;
+  
+  if (hmap_size((*subdir)->subdirs) > 0) /* chuj */
+    return ENOTEMPTY;
+
+  hmap_remove(parent->subdirs, dir_name);
+
   return 0;
 }
 
