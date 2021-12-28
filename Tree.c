@@ -36,6 +36,17 @@
 /** This is the root directory name. */
 #define ROOT_PATH "/"
 
+/** Using this structure to store all of a tree's synchronisation variables. */
+typedef struct Monitor {
+  pthread_mutex_t mutex;
+  pthread_cond_t listers;
+  pthread_cond_t editors;
+  size_t lwait;
+  size_t ewait;
+  size_t lcount;
+  size_t ecount;
+} Monitor;
+
 /**
  * This is a recursive data structure representing a directory tree.
  * One mutex and two conditionals per node. We will do this the following way:
@@ -45,13 +56,23 @@
  * descendants until those take place.
  */
 struct Tree {
-  pthread_mutex_t mutex;
-  pthread_cond_t cond;
-  size_t wwait;
-  size_t rwait;
+  struct Monitor monit;
   char* dir_name;
   HashMap* subdirs;
 };
+
+int monit_init(Monitor* mon)
+{
+  int err;
+   /* consciously using "||" operator's laziness */
+  if ((err = pthread_mutex_init(&mon->mutex, 0)) ||
+      (err = pthread_cond_init(&mon->listers, 0)) ||
+      (err = pthread_cond_init(&mon->editors, 0)))
+    return err;
+  
+  mon->lwait = mon->ewait = mon->ecount = mon->lcount = 0;
+  return 0;
+}
 
 /**
  * A helper function for creating a heap allocated new empty directory with
@@ -62,14 +83,16 @@ Tree* new_dir(const char* dname)
   Tree* tree = malloc(sizeof(Tree));
   char* name = strdup(dname);
 
-  if (!tree || !dname)
+  /* TODO: when fails we shoyld free the allocated ones
+   * so more ifology after each malloc */
+  if (!tree || !name)
     return NULL;
 
   tree->dir_name = name;
   tree->subdirs = hmap_new();
-  pthread_mutex_init(&tree->mutex, 0);
-  pthread_cond_init(&tree->cond, 0);
-  tree->wwait = tree->rwait = 0;
+
+  if (monit_init(&tree->monit))
+    return NULL;
   
   return tree;
 }
@@ -91,6 +114,34 @@ Tree* find_dir(Tree* root, const char* path)
   }
 
   return root;
+}
+
+/**
+ * Find a directory under a `path`. The `entry_fn` function will be used to
+ * access each of the passed by `Tree`'s monitor. It returns an exit code and
+ * its parameters are the monitor in question and a boolean flag telling whether
+ * it is visiting the target's node monitor or one on the way.
+ *
+ * The exit function works similarily but it will only be called on non-final
+ * directories. */
+Tree* access_dir(Tree* root, const char* path, int (*entry_fn) (Monitor*, bool),
+                 int (*exit_fn) (Monitor*))
+{
+  char component[MAX_FOLDER_NAME_LENGTH + 1];
+  const char* subpath = path;
+
+  entry_fn(&root->monit, false);
+  while ((subpath = split_path(subpath, component))) {
+    exit_fn(&root->monit);
+    if (!root)
+      break;
+
+    entry_fn(&root->monit, false);
+    root = hmap_get(root->subdirs, component);
+  }
+
+  return root;
+  
 }
 
 Tree* tree_new()
