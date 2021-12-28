@@ -27,4 +27,7 @@ int tree_remove(Tree* tree, const char* path);
 /** Move a soruce subdirectory to a new target location. */
 int tree_move(Tree* tree, const char* source, const char* target);
 
+/** List all contents recursively. Similar to the commandline "tree" program. */
+void tree_tree(Tree* tree, int depth);
+
 #endif  /* _TREE_H_ */

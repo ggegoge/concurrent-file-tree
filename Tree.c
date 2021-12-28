@@ -87,9 +87,10 @@ void tree_free(Tree* tree)
   HashMapIterator it = hmap_iterator(tree->subdirs);
   const char* subdir_name;
   void* subdir_ptr;
+  Tree* subdir;
 
   while (hmap_next(tree->subdirs, &it, &subdir_name, &subdir_ptr)) {
-    Tree* subdir = (Tree*)subdir_ptr;
+    subdir = (Tree*)subdir_ptr;
     tree_free(subdir);
   }
 
@@ -236,4 +237,28 @@ int tree_move(Tree* tree, const char* source, const char* target)
   tree_free(source_dir);
 
   return 0;
+}
+
+/* list all contents recursively */
+void tree_tree(Tree* tree, int depth)
+{
+  HashMapIterator it = hmap_iterator(tree->subdirs);
+  const char* subdir_name;
+  void* subdir_ptr;
+  Tree* subdir;
+
+  if (!depth)
+    printf("tree %s\n", tree->dir_name);
+
+  printf(" ");
+
+  for (int i = 0; i < depth; ++i)
+    printf(" ");
+
+  printf("%s\n", tree->dir_name);
+
+  while (hmap_next(tree->subdirs, &it, &subdir_name, &subdir_ptr)) {
+    subdir = (Tree*)subdir_ptr;
+    tree_tree(subdir, depth + 1);
+  }
 }
