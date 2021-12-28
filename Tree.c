@@ -177,11 +177,14 @@ int writer_entry(Monitor* mon)
 {
   int err;
 
+  if (!mon)
+    return 0;
+  
   err = pthread_mutex_lock(&mon->mutex);
 
   /* If I'm a writer here then I can write along as I am a sequential being
    * apart from that i wait if there are some others working */
-  if (!(mon->wcount == 1 && mon->wid == pthread_self()) &&
+  if (!(mon->wcount > 0 && mon->wid == pthread_self()) &&
       (mon->rwait > 0 || mon->rcount > 0 || mon->wcount > 0)) {
     printf("writer %lu goes to sleep cause rw=%lu rc=%lu wc=%lu\n",
            pthread_self(), mon->rwait, mon->rcount, mon->wcount);
@@ -194,7 +197,7 @@ int writer_entry(Monitor* mon)
   ++mon->wcount;
   mon->wid = pthread_self();
   printf("\twentr %lu: ++wcount\n", pthread_self());
-  assert(mon->wcount == 1 || mon->wid == pthread_self());
+  assert(mon->wcount > 0 || mon->wid == pthread_self());
   assert(mon->rcount == 0);
   err = pthread_mutex_unlock(&mon->mutex);
 
@@ -205,8 +208,11 @@ int writer_exit(Monitor* mon)
 {
   int err;
 
+  if (!mon)
+    return 0;
+  
   err = pthread_mutex_lock(&mon->mutex);
-  assert(mon->wcount == 1 || mon->wid == pthread_self());
+  assert(mon->wcount > 0 || mon->wid == pthread_self());
   assert(mon->rcount == 0);    
   --mon->wcount;
 
@@ -230,11 +236,14 @@ int reader_entry(Monitor* mon)
 {
   int err;
 
+  if (!mon)
+    return 0;
+
   err = pthread_mutex_lock(&mon->mutex);
 
   /* I wait if either im not the current owner of this or if i have other more
    * classical reasons like waiting for others to finish their business */
-  if (!(mon->wcount == 1 && mon->wid == pthread_self()) &&
+  if (!(mon->wcount > 0 && mon->wid == pthread_self()) &&
       (mon->wwait > 0 || mon->wcount > 0)) {
     printf("reader %lu goes to sleep cause ww=%lu wc=%lu\n",
            pthread_self(), mon->wwait, mon->wcount);
@@ -243,6 +252,7 @@ int reader_entry(Monitor* mon)
     printf("reader %lu woke up\n", pthread_self());
     --mon->rwait;
   }
+
   assert(mon->wcount == 0 || mon->wid == pthread_self());
   ++mon->rcount;
   err = pthread_mutex_unlock(&mon->mutex);
@@ -252,6 +262,9 @@ int reader_entry(Monitor* mon)
 int reader_exit(Monitor* mon)
 {
   int err;
+
+  if (!mon)
+    return 0;
 
   err = pthread_mutex_lock(&mon->mutex);
   --mon->rcount;
@@ -418,9 +431,20 @@ int tree_remove(Tree* tree, const char* path)
   return 0;
 }
 
+/* If we think about it then this bears some resemblence to the classic hungry
+ * philosophers problem. Each `tree_move` recquires posessing two ``forks'' in
+ * this analogy those are source's parent dir and target's parent dir. Naïve
+ * sequential taking of the forks won't work as we may starve ourselves with
+ * a fellow philosopher. Breaking the symetry is not really possible neither.
+ *
+ * Solution: join the forks with a string and take the string.
+ * Translated to the actual tree: lock the LCA of target and source
+ * and only then proceed. */
 int tree_move(Tree* tree, const char* source, const char* target)
 {
   printf("mv %s %s    | %lu\n", source, target, pthread_self());
+  char* lca_path;
+  Tree* lca;
   Tree* source_parent;
   char* source_parent_path;
   Tree* source_dir;
@@ -436,39 +460,43 @@ int tree_move(Tree* tree, const char* source, const char* target)
     return EBUSY;
   else if (is_subpath(source, target))
     return ESUBPATH;
-  
+
+  lca_path = path_lca(source, target);
+  printf("lca_path = %s\n", lca_path);
   source_parent_path = make_path_to_parent(source, source_dir_name);
   target_parent_path = make_path_to_parent(target, target_dir_name);
 
+  lca = access_dir(tree, lca_path, edit_entry, reader_exit);
+  /* having locked the lca i may proceed from there onwards may i not? */
   source_parent = access_dir(tree, source_parent_path, edit_entry, reader_exit);
   printf("%lu: got the source parent!\n", pthread_self());
   target_parent = access_dir(tree, target_parent_path, edit_entry, reader_exit);
   printf("%lu got the target parent!\n", pthread_self());
 
+  free(lca_path);
   free(source_parent_path);
   free(target_parent_path);
 
-  if (!source_parent && !target_parent) {
-    return ENOENT;
-  } else if (!source_parent) {
+  if (!lca || !source_parent || !target_parent) {
     writer_exit(&source_parent->monit);
-    return ENOENT;
-  } else if (!target_parent) {
     writer_exit(&target_parent->monit);
+    writer_exit(&lca->monit);
     return ENOENT;
   }
-
+  
   source_dir = hmap_get(source_parent->subdirs, source_dir_name);
 
   if (!source_dir) {
     writer_exit(&source_parent->monit);
     writer_exit(&target_parent->monit);
+    writer_exit(&lca->monit);
     return ENOENT;
   }
 
   if (hmap_get(target_parent->subdirs, target_dir_name)) {
     writer_exit(&source_parent->monit);
     writer_exit(&target_parent->monit);
+    writer_exit(&lca->monit);
     return EEXIST;
   }
 
@@ -479,6 +507,7 @@ int tree_move(Tree* tree, const char* source, const char* target)
   if (!target_dir) {
     writer_exit(&source_parent->monit);
     writer_exit(&target_parent->monit);
+    writer_exit(&lca->monit);
     return ENOMEM;
   }
 
@@ -492,6 +521,7 @@ int tree_move(Tree* tree, const char* source, const char* target)
 
   writer_exit(&source_parent->monit);
   writer_exit(&target_parent->monit);
+  writer_exit(&lca->monit);
   
   return 0;
 }

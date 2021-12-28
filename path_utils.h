@@ -68,4 +68,10 @@ char* make_map_contents_string(HashMap* map);
  * paths. */
 bool is_subpath(const char* path1, const char* path2);
 
+/**
+ * Find the lowest common ancestor of two paths. Will save path to the lca under
+ * `lca`, assumes it is big enough and that `path1` and `path2` are both valid.
+ */
+char* path_lca(const char* path1, const char* path2);
+
 #endif  /* _PATH_UTILS_H_ */
