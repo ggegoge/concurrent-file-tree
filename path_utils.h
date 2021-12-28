@@ -63,4 +63,9 @@ const char** make_map_contents_array(HashMap* map);
  * The caller should free the result. */
 char* make_map_contents_string(HashMap* map);
 
+/**
+ * Test whether `path1` is a subpath of `path2`. Assumes both are valid
+ * paths. */
+bool is_subpath(const char* path1, const char* path2);
+
 #endif  /* _PATH_UTILS_H_ */
