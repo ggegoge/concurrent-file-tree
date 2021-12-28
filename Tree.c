@@ -75,7 +75,7 @@ int monit_init(Monitor* mon)
       (err = pthread_cond_init(&mon->writers, 0)))
     return err;
   
-  mon->rwait = mon->wwait = mon->wcount = mon->rcount = 0;
+  mon->rwait = mon->wwait = mon->wcount = mon->rcount = mon->wid = 0;
   return 0;
 }
 
@@ -207,6 +207,10 @@ int writer_exit(Monitor* mon)
   assert(mon->wcount == 1 || mon->wid == pthread_self());
   assert(mon->rcount == 0);    
   --mon->wcount;
+
+  if (mon->wcount == 0)
+    mon->wid = 0;
+  
   printf("\twentr: --wcount\n");
   
   if (mon->rwait > 0)
