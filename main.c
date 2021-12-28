@@ -3,8 +3,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 
 #include "Tree.h"
+
+#define ITER 100
 
 void simple_tree_test()
 {
@@ -55,7 +58,7 @@ void simple_tree_test()
   int e7 = tree_remove(root, "/b/chuuj/wyjebany/");
 
   assert(!e7);
-  
+
   listing = tree_list(root, "/b/chuuj/");
   assert(strcmp(listing, "b,c") == 0);
   printf("\t%s\n", listing);
@@ -63,7 +66,7 @@ void simple_tree_test()
 
   int e8 = tree_move(root, "/b/chuuj/", "/b/chuuj/c/x/");
   assert(e8);
-  
+
   tree_free(root);
 }
 
@@ -74,9 +77,59 @@ void errors_tree_test()
 
 }
 
+/* THREADED TESTS */
+void* move_tester1(void* tree)
+{
+  for (int i = 0; i < ITER; i++) {
+    tree_move((Tree*)tree, "/a/b/", "/b/x/");
+    tree_move((Tree*)tree, "/b/x/", "/a/b/");
+  }
+
+  return NULL;
+}
+
+void* move_tester2(void* tree)
+{
+  for (int i = 0; i < ITER; i++) {
+    tree_move((Tree*)tree, "/b/x/", "/a/b/");
+    tree_move((Tree*)tree, "/a/b/", "/b/x/");
+  }
+
+  return NULL;
+}
+
+void move_test_async()
+{
+  Tree* tree = tree_new();
+
+  printf("move_test_sync\n");
+  
+  tree_create(tree, "/a/");
+  tree_create(tree, "/b/");
+  tree_create(tree, "/a/b/");
+  tree_create(tree, "/a/b/c/");
+  tree_create(tree, "/a/b/d/");
+  tree_create(tree, "/b/a/");
+  tree_create(tree, "/b/a/d/");
+
+  pthread_t t[2];
+  pthread_create(&t[0], NULL, move_tester1, tree);
+  pthread_create(&t[1], NULL, move_tester2, tree);
+
+  pthread_join(t[0], NULL);
+  pthread_join(t[1], NULL);
+
+  tree_tree(tree, 0);
+
+  tree_free(tree);
+}
+
+
 int main(void)
 {
   simple_tree_test();
   errors_tree_test();
+  move_test_async();
+
   return 0;
 }

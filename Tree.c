@@ -183,15 +183,17 @@ int writer_entry(Monitor* mon)
    * apart from that i wait if there are some others working */
   if (!(mon->wcount == 1 && mon->wid == pthread_self()) &&
       (mon->rwait > 0 || mon->rcount > 0 || mon->wcount > 0)) {
-    printf("a writer goes to sleep\n");
+    printf("writer %lu goes to sleep cause rw=%lu rc=%lu wc=%lu\n",
+           pthread_self(), mon->rwait, mon->rcount, mon->wcount);
     ++mon->wwait;
     err = pthread_cond_wait(&mon->writers, &mon->mutex);
+    printf("writer %lu woke up\n", pthread_self());
     --mon->wwait;
   }
 
   ++mon->wcount;
   mon->wid = pthread_self();
-  printf("\twentr: ++wcount\n");
+  printf("\twentr %lu: ++wcount\n", pthread_self());
   assert(mon->wcount == 1 || mon->wid == pthread_self());
   assert(mon->rcount == 0);
   err = pthread_mutex_unlock(&mon->mutex);
@@ -211,7 +213,7 @@ int writer_exit(Monitor* mon)
   if (mon->wcount == 0)
     mon->wid = 0;
   
-  printf("\twentr: --wcount\n");
+  printf("\twexit %lu: --wcount\n", pthread_self());
   
   if (mon->rwait > 0)
     err = pthread_cond_broadcast(&mon->readers);
@@ -234,9 +236,11 @@ int reader_entry(Monitor* mon)
    * classical reasons like waiting for others to finish their business */
   if (!(mon->wcount == 1 && mon->wid == pthread_self()) &&
       (mon->wwait > 0 || mon->wcount > 0)) {
-    printf("a reader goes to sleep cause ww=%lu wc=%lu\n", mon->wwait, mon->wcount);
+    printf("reader %lu goes to sleep cause ww=%lu wc=%lu\n",
+           pthread_self(), mon->wwait, mon->wcount);
     ++mon->rwait;
     err = pthread_cond_wait(&mon->readers, &mon->mutex);
+    printf("reader %lu woke up\n", pthread_self());
     --mon->rwait;
   }
   assert(mon->wcount == 0 || mon->wid == pthread_self());
@@ -416,7 +420,7 @@ int tree_remove(Tree* tree, const char* path)
 
 int tree_move(Tree* tree, const char* source, const char* target)
 {
-  printf("mv %s %s\n", source, target);
+  printf("mv %s %s    | %lu\n", source, target, pthread_self());
   Tree* source_parent;
   char* source_parent_path;
   Tree* source_dir;
@@ -437,9 +441,9 @@ int tree_move(Tree* tree, const char* source, const char* target)
   target_parent_path = make_path_to_parent(target, target_dir_name);
 
   source_parent = access_dir(tree, source_parent_path, edit_entry, reader_exit);
-  printf("got the source parent!\n");
+  printf("%lu: got the source parent!\n", pthread_self());
   target_parent = access_dir(tree, target_parent_path, edit_entry, reader_exit);
-  printf("got the target parent!\n");
+  printf("%lu got the target parent!\n", pthread_self());
 
   free(source_parent_path);
   free(target_parent_path);
