@@ -198,7 +198,9 @@ int tree_move(Tree* tree, const char* source, const char* target)
     return EINVAL;
   else if (strcmp(source, ROOT_PATH) == 0)
     return EBUSY;
-
+  else if (is_subpath(source, target))
+    return ESUBPATH;
+  
   source_parent_path = make_path_to_parent(source, source_dir_name);
   target_parent_path = make_path_to_parent(target, target_dir_name);
   source_parent = find_dir(tree, source_parent_path);

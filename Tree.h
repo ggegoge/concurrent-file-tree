@@ -1,6 +1,11 @@
 #ifndef _TREE_H_
 #define _TREE_H_
 
+/* CUSTOM ERROR CODES */
+
+/** Tried to move a directory into its descendant. */
+#define ESUBPATH -3
+
 /** Our tree type */
 typedef struct Tree Tree;
 

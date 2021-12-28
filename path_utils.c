@@ -1,6 +1,7 @@
 #include "path_utils.h"
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -116,4 +117,27 @@ char* make_map_contents_string(HashMap* map)
     *position = '\0';
     free(keys);
     return result;
+}
+
+/* return: p1 \subseteq p2? */
+bool is_subpath(const char* path1, const char* path2)
+{
+  char comp1[MAX_FOLDER_NAME_LENGTH + 1];
+  char comp2[MAX_FOLDER_NAME_LENGTH + 1];
+  const char* sub1 = path1;
+  const char* sub2 = path2;
+
+  for (;;) {
+    sub1 = split_path(sub1, comp1);
+    sub2 = split_path(sub2, comp2);
+
+    /* if path1 runs out before path2 and it had equal components up to now
+     * then it is indeed a subpath. */
+    if (!sub1)
+      return true;
+    else if (!sub2)
+      return false;
+    else if (strcmp(comp1, comp2) != 0)
+      return false;
+  }
 }

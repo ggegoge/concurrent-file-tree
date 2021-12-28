@@ -61,6 +61,9 @@ void simple_tree_test()
   printf("\t%s\n", listing);
   free(listing);
 
+  int e8 = tree_move(root, "/b/chuuj/", "/b/chuuj/c/x/");
+  assert(e8);
+  
   tree_free(root);
 }
 
