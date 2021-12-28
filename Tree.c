@@ -12,6 +12,7 @@
 #include <pthread.h>
 
 #include <assert.h>
+#include <unistd.h>
 
 #include "HashMap.h"
 #include "path_utils.h"
@@ -38,13 +39,15 @@
 
 /** Using this structure to store all of a tree's synchronisation variables. */
 typedef struct Monitor {
+  /* TODO: move this struct as well as the functions that operate on it into
+   * a separate rw module. Then store the Monitor on the heap? or perhaps no */
   pthread_mutex_t mutex;
-  pthread_cond_t listers;
-  pthread_cond_t editors;
-  size_t lwait;
-  size_t ewait;
-  size_t lcount;
-  size_t ecount;
+  pthread_cond_t readers;
+  pthread_cond_t writers;
+  size_t rwait;
+  size_t wwait;
+  size_t rcount;
+  size_t wcount;
 } Monitor;
 
 /**
@@ -66,12 +69,24 @@ int monit_init(Monitor* mon)
   int err;
    /* consciously using "||" operator's laziness */
   if ((err = pthread_mutex_init(&mon->mutex, 0)) ||
-      (err = pthread_cond_init(&mon->listers, 0)) ||
-      (err = pthread_cond_init(&mon->editors, 0)))
+      (err = pthread_cond_init(&mon->readers, 0)) ||
+      (err = pthread_cond_init(&mon->writers, 0)))
     return err;
   
-  mon->lwait = mon->ewait = mon->ecount = mon->lcount = 0;
+  mon->rwait = mon->wwait = mon->wcount = mon->rcount = 0;
   return 0;
+}
+
+int monit_destroy(Monitor* mon)
+{
+  int err;
+  if ((err = pthread_mutex_destroy(&mon->mutex)) ||
+      (err = pthread_cond_destroy(&mon->readers)) ||
+      (err = pthread_cond_destroy(&mon->writers)))
+    return err;
+
+  mon->rwait = mon->wwait = mon->wcount = mon->rcount = 0;
+  return 0;  
 }
 
 /**
@@ -122,27 +137,134 @@ Tree* find_dir(Tree* root, const char* path)
  * its parameters are the monitor in question and a boolean flag telling whether
  * it is visiting the target's node monitor or one on the way.
  *
- * The exit function works similarily but it will only be called on non-final
+ * The `exit_fn` function works similarily but it will only be called on non-final
  * directories. */
 Tree* access_dir(Tree* root, const char* path, int (*entry_fn) (Monitor*, bool),
                  int (*exit_fn) (Monitor*))
 {
   char component[MAX_FOLDER_NAME_LENGTH + 1];
   const char* subpath = path;
+  Tree* next;
 
-  entry_fn(&root->monit, false);
   while ((subpath = split_path(subpath, component))) {
-    exit_fn(&root->monit);
     if (!root)
       break;
-
+    
     entry_fn(&root->monit, false);
-    root = hmap_get(root->subdirs, component);
+    next = hmap_get(root->subdirs, component);
+    exit_fn(&root->monit);
+    root = next;
   }
 
-  return root;
+  if (root)
+    entry_fn(&root->monit, true);
   
+  return root;  
 }
+
+/* Entry and exit protocoles in both reading and writing flavours (reminder: we
+ * treat a writer on an ancestoral node to its target as a reader!).
+ *
+ * Then those will be used neatly for the directory accessing function. */
+
+int writer_entry(Monitor* mon)
+{
+  int err;
+
+  err = pthread_mutex_lock(&mon->mutex);
+
+  if (mon->rwait > 0 || mon->rcount > 0) {
+    ++mon->wwait;
+    err = pthread_cond_wait(&mon->writers, &mon->mutex);
+    --mon->wwait;
+  }
+  
+  ++mon->wcount;
+  assert(mon->wcount == 1);
+  assert( mon->rcount == 0);
+  err = pthread_mutex_unlock(&mon->mutex);
+
+  return err;
+}
+
+int writer_exit(Monitor* mon)
+{
+  int err;
+
+  err = pthread_mutex_lock(&mon->mutex);
+  --mon->wcount;
+  assert(mon->wcount == 0);
+  assert(mon->rcount == 0);
+  
+  if (mon->rwait > 0)
+    err = pthread_cond_broadcast(&mon->readers);
+  else if (mon->wwait > 0)
+    err = pthread_cond_signal(&mon->writers);
+
+  err = pthread_mutex_unlock(&mon->mutex);
+
+  return err;
+}
+
+
+int reader_entry(Monitor* mon)
+{
+  int err;
+
+  err = pthread_mutex_lock(&mon->mutex);
+
+  if (mon->wwait > 0 || mon->wcount > 0) {
+    ++mon->rwait;
+    err = pthread_cond_wait(&mon->readers, &mon->mutex);
+    --mon->rwait;
+  }
+  assert(mon->wcount == 0);
+  ++mon->rcount;
+  err = pthread_mutex_unlock(&mon->mutex);
+
+  return err;
+}
+int reader_exit(Monitor* mon)
+{
+  int err;
+
+  err = pthread_mutex_lock(&mon->mutex);
+  --mon->rcount;
+  
+  if (mon->rwait == 0 && mon->wwait > 0)
+    err = pthread_cond_signal(&mon->writers);
+  else
+    err = pthread_cond_broadcast(&mon->readers);
+
+  err = pthread_mutex_unlock(&mon->mutex);
+  
+  return err;
+}
+
+/**
+ * This is how the editing thread will enter directories. Depending on whether
+ * this is their destination dir (`islast`) they will either be treated as a
+ * writer or as a reader.
+ *
+ * Note: this function has a signature appropriate for the `entry_fn` argument
+ * in `access_dir`.
+ */
+int edit_entry(Monitor* mon, bool islast)
+{
+  if (islast)
+    return writer_entry(mon);
+  else
+    return reader_entry(mon);
+}
+
+/** A wrapper for reader's dir access. Matches `entry_fn` in `access_dir`. */
+int list_entry(Monitor* mon, bool islast)
+{
+  (void)islast;
+  return reader_entry(mon);
+}
+
+/* -------------------------------------------------------------------------- */
 
 Tree* tree_new()
 {
@@ -162,6 +284,7 @@ void tree_free(Tree* tree)
     tree_free(subdir);
   }
 
+  monit_destroy(&tree->monit);
   hmap_free(tree->subdirs);
   free(tree->dir_name);
   free(tree);
@@ -171,16 +294,20 @@ char* tree_list(Tree* tree, const char* path)
 {
   printf("ls %s\n", path);
   Tree* dir;
+  char* contents;
 
   if (!is_path_valid(path))
     return 0;
 
-  dir = find_dir(tree, path);
+  dir = access_dir(tree, path, list_entry, reader_exit);
 
   if (!dir)
     return 0;
 
-  return make_map_contents_string(dir->subdirs);
+  contents = make_map_contents_string(dir->subdirs);
+  reader_exit(&dir->monit);
+  
+  return contents;
 }
 
 int tree_create(Tree* tree, const char* path)
@@ -200,7 +327,7 @@ int tree_create(Tree* tree, const char* path)
   if (!parent_path)
     return EEXIST;
 
-  parent = find_dir(tree, parent_path);
+  parent = access_dir(tree, parent_path, edit_entry, writer_exit);
   free(parent_path);
 
   /* The parent does not exist. */
@@ -208,16 +335,22 @@ int tree_create(Tree* tree, const char* path)
     return ENOENT;
 
   /* The subdir we want to create already exists. */
-  if (hmap_get(parent->subdirs, last_component))
+  if (hmap_get(parent->subdirs, last_component)) {
+    writer_exit(&parent->monit);
     return EEXIST;
+  }
 
   subdir = new_dir(last_component);
 
-  if (!subdir)
+  if (!subdir) {
+    writer_exit(&parent->monit);
     return ENOMEM;
+  }
 
   /* Add the newly created subdirectory as a parent's child */
   hmap_insert(parent->subdirs, subdir->dir_name, subdir);
+  writer_exit(&parent->monit);
+
   return 0;
 }
 
@@ -236,18 +369,25 @@ int tree_remove(Tree* tree, const char* path)
 
   parent_path = make_path_to_parent(path, last_component);
   parent = find_dir(tree, parent_path);
+  parent = access_dir(tree, parent_path, edit_entry, reader_exit);
   free(parent_path);
 
   subdir = hmap_get(parent->subdirs, last_component);
 
-  if (!subdir)
+  if (!subdir) {
+    writer_exit(&parent->monit);
     return ENOENT;
+  }
 
-  if (hmap_size(subdir->subdirs) > 0)
+  if (hmap_size(subdir->subdirs) > 0) {
+    writer_exit(&parent->monit);
     return ENOTEMPTY;
+  }
 
   hmap_remove(parent->subdirs, last_component);
   tree_free(subdir);
+  writer_exit(&parent->monit);
+  
   return 0;
 }
 
@@ -272,29 +412,46 @@ int tree_move(Tree* tree, const char* source, const char* target)
   
   source_parent_path = make_path_to_parent(source, source_dir_name);
   target_parent_path = make_path_to_parent(target, target_dir_name);
-  source_parent = find_dir(tree, source_parent_path);
-  target_parent = find_dir(tree, target_parent_path);
+
+  source_parent = access_dir(tree, source_parent_path, edit_entry, reader_exit);
+  target_parent = access_dir(tree, target_parent_path, edit_entry, reader_exit);
 
   free(source_parent_path);
   free(target_parent_path);
 
-  if (!source_parent || !target_parent)
+  if (!source_parent && !target_parent) {
     return ENOENT;
+  } else if (!source_parent) {
+    writer_exit(&source_parent->monit);
+    return ENOENT;
+  } else if (!target_parent) {
+    writer_exit(&target_parent->monit);
+    return ENOENT;
+  }
 
   source_dir = hmap_get(source_parent->subdirs, source_dir_name);
 
-  if (!source_dir)
+  if (!source_dir) {
+    writer_exit(&source_parent->monit);
+    writer_exit(&target_parent->monit);
     return ENOENT;
+  }
 
-  if (hmap_get(target_parent->subdirs, target_dir_name))
+  if (hmap_get(target_parent->subdirs, target_dir_name)) {
+    writer_exit(&source_parent->monit);
+    writer_exit(&target_parent->monit);
     return EEXIST;
+  }
 
   /* remove ourselves from one map and add to another */
   hmap_remove(source_parent->subdirs, source_dir_name);
   target_dir = new_dir(target_dir_name);
 
-  if (!target_dir)
+  if (!target_dir) {
+    writer_exit(&source_parent->monit);
+    writer_exit(&target_parent->monit);
     return ENOMEM;
+  }
 
   hmap_insert(target_parent->subdirs, target_dir->dir_name, target_dir);
 
@@ -304,6 +461,9 @@ int tree_move(Tree* tree, const char* source, const char* target)
   source_dir->subdirs = tmp;
   tree_free(source_dir);
 
+  writer_exit(&source_parent->monit);
+  writer_exit(&target_parent->monit);
+  
   return 0;
 }
 
