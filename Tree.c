@@ -48,6 +48,8 @@ typedef struct Monitor {
   size_t wwait;
   size_t rcount;
   size_t wcount;
+  /* id of the current writer! */
+  pthread_t wid;
 } Monitor;
 
 /**
@@ -149,15 +151,19 @@ Tree* access_dir(Tree* root, const char* path, int (*entry_fn) (Monitor*, bool),
   while ((subpath = split_path(subpath, component))) {
     if (!root)
       break;
-    
+
+    printf("\tacess: non final entry on %s\n", root->dir_name);
     entry_fn(&root->monit, false);
     next = hmap_get(root->subdirs, component);
+    printf("\tacess: exit on %s\n", root->dir_name);
     exit_fn(&root->monit);
     root = next;
   }
 
-  if (root)
+  if (root) {
+    printf("\tacess: final entry on %s\n", root->dir_name);
     entry_fn(&root->monit, true);
+  }
   
   return root;  
 }
@@ -173,15 +179,21 @@ int writer_entry(Monitor* mon)
 
   err = pthread_mutex_lock(&mon->mutex);
 
-  if (mon->rwait > 0 || mon->rcount > 0) {
+  /* If I'm a writer here then I can write along as I am a sequential being
+   * apart from that i wait if there are some others working */
+  if (!(mon->wcount == 1 && mon->wid == pthread_self()) &&
+      (mon->rwait > 0 || mon->rcount > 0 || mon->wcount > 0)) {
+    printf("a writer goes to sleep\n");
     ++mon->wwait;
     err = pthread_cond_wait(&mon->writers, &mon->mutex);
     --mon->wwait;
   }
-  
+
   ++mon->wcount;
-  assert(mon->wcount == 1);
-  assert( mon->rcount == 0);
+  mon->wid = pthread_self();
+  printf("\twentr: ++wcount\n");
+  assert(mon->wcount == 1 || mon->wid == pthread_self());
+  assert(mon->rcount == 0);
   err = pthread_mutex_unlock(&mon->mutex);
 
   return err;
@@ -192,9 +204,10 @@ int writer_exit(Monitor* mon)
   int err;
 
   err = pthread_mutex_lock(&mon->mutex);
+  assert(mon->wcount == 1 || mon->wid == pthread_self());
+  assert(mon->rcount == 0);    
   --mon->wcount;
-  assert(mon->wcount == 0);
-  assert(mon->rcount == 0);
+  printf("\twentr: --wcount\n");
   
   if (mon->rwait > 0)
     err = pthread_cond_broadcast(&mon->readers);
@@ -213,12 +226,16 @@ int reader_entry(Monitor* mon)
 
   err = pthread_mutex_lock(&mon->mutex);
 
-  if (mon->wwait > 0 || mon->wcount > 0) {
+  /* I wait if either im not the current owner of this or if i have other more
+   * classical reasons like waiting for others to finish their business */
+  if (!(mon->wcount == 1 && mon->wid == pthread_self()) &&
+      (mon->wwait > 0 || mon->wcount > 0)) {
+    printf("a reader goes to sleep cause ww=%lu wc=%lu\n", mon->wwait, mon->wcount);
     ++mon->rwait;
     err = pthread_cond_wait(&mon->readers, &mon->mutex);
     --mon->rwait;
   }
-  assert(mon->wcount == 0);
+  assert(mon->wcount == 0 || mon->wid == pthread_self());
   ++mon->rcount;
   err = pthread_mutex_unlock(&mon->mutex);
 
@@ -230,8 +247,9 @@ int reader_exit(Monitor* mon)
 
   err = pthread_mutex_lock(&mon->mutex);
   --mon->rcount;
+  assert(mon->wcount == 0 || mon->wid == pthread_self());
   
-  if (mon->rwait == 0 && mon->wwait > 0)
+  if (mon->rcount == 0 && mon->wwait > 0)
     err = pthread_cond_signal(&mon->writers);
   else
     err = pthread_cond_broadcast(&mon->readers);
@@ -305,6 +323,7 @@ char* tree_list(Tree* tree, const char* path)
     return 0;
 
   contents = make_map_contents_string(dir->subdirs);
+  printf("\tlist: reader exiting\n");
   reader_exit(&dir->monit);
   
   return contents;
@@ -327,7 +346,7 @@ int tree_create(Tree* tree, const char* path)
   if (!parent_path)
     return EEXIST;
 
-  parent = access_dir(tree, parent_path, edit_entry, writer_exit);
+  parent = access_dir(tree, parent_path, edit_entry, reader_exit);
   free(parent_path);
 
   /* The parent does not exist. */
@@ -414,7 +433,9 @@ int tree_move(Tree* tree, const char* source, const char* target)
   target_parent_path = make_path_to_parent(target, target_dir_name);
 
   source_parent = access_dir(tree, source_parent_path, edit_entry, reader_exit);
+  printf("got the source parent!\n");
   target_parent = access_dir(tree, target_parent_path, edit_entry, reader_exit);
+  printf("got the target parent!\n");
 
   free(source_parent_path);
   free(target_parent_path);
