@@ -69,12 +69,13 @@ struct Tree {
 int monit_init(Monitor* mon)
 {
   int err;
-   /* consciously using "||" operator's laziness */
+
+  /* consciously using "||" operator's laziness */
   if ((err = pthread_mutex_init(&mon->mutex, 0)) ||
       (err = pthread_cond_init(&mon->readers, 0)) ||
       (err = pthread_cond_init(&mon->writers, 0)))
     return err;
-  
+
   mon->rwait = mon->wwait = mon->wcount = mon->rcount = mon->wid = 0;
   return 0;
 }
@@ -82,13 +83,14 @@ int monit_init(Monitor* mon)
 int monit_destroy(Monitor* mon)
 {
   int err;
+
   if ((err = pthread_mutex_destroy(&mon->mutex)) ||
       (err = pthread_cond_destroy(&mon->readers)) ||
       (err = pthread_cond_destroy(&mon->writers)))
     return err;
 
   mon->rwait = mon->wwait = mon->wcount = mon->rcount = 0;
-  return 0;  
+  return 0;
 }
 
 /**
@@ -110,7 +112,7 @@ Tree* new_dir(const char* dname)
 
   if (monit_init(&tree->monit))
     return NULL;
-  
+
   return tree;
 }
 
@@ -164,8 +166,8 @@ Tree* access_dir(Tree* root, const char* path, int (*entry_fn) (Monitor*, bool),
     printf("\tacess[%lu]: final entry on %s\n", pthread_self(), root->dir_name);
     entry_fn(&root->monit, true);
   }
-  
-  return root;  
+
+  return root;
 }
 
 /* Entry and exit protocoles in both reading and writing flavours (reminder: we
@@ -179,13 +181,13 @@ int writer_entry(Monitor* mon)
 
   if (!mon)
     return 0;
-  
+
   err = pthread_mutex_lock(&mon->mutex);
 
   /* If I'm a writer here then I can write along as I am a sequential being
    * apart from that i wait if there are some others working */
   if (!(mon->wcount > 0 && mon->wid == pthread_self()) &&
-      (mon->rwait > 0 || mon->rcount > 0 || mon->wcount > 0)) {
+      (mon->rwait > 0 || mon->rcount > 0 || mon->wcount > 0 || mon->wwait > 0)) {
     printf("writer %lu goes to sleep cause rw=%lu rc=%lu wc=%lu\n",
            pthread_self(), mon->rwait, mon->rcount, mon->wcount);
     ++mon->wwait;
@@ -211,16 +213,16 @@ int writer_exit(Monitor* mon)
 
   if (!mon)
     return 0;
-  
+
   err = pthread_mutex_lock(&mon->mutex);
   assert(mon->wcount > 0 || mon->wid == pthread_self());
   --mon->wcount;
 
   if (mon->wcount == 0)
     mon->wid = 0;
-  
+
   printf("\twexit %lu: --wcount\n", pthread_self());
-  
+
   if (mon->wcount == 0 && mon->rcount == 0 && mon->rwait > 0) {
     printf("writer %lu is waking up a reader\n", pthread_self());
     err = pthread_cond_broadcast(&mon->readers);
@@ -275,7 +277,7 @@ int reader_exit(Monitor* mon)
   printf("\trexit %lu: --rcount\n", pthread_self());
   --mon->rcount;
   assert(mon->wcount == 0 || mon->wid == pthread_self());
-  
+
   if (mon->wcount == 0 && mon->rcount == 0 && mon->wwait > 0) {
     printf("reader %lu is waking up a writer\n", pthread_self());
     err = pthread_cond_signal(&mon->writers);
@@ -285,7 +287,7 @@ int reader_exit(Monitor* mon)
   }
 
   err = pthread_mutex_unlock(&mon->mutex);
-  
+
   return err;
 }
 
@@ -355,7 +357,7 @@ char* tree_list(Tree* tree, const char* path)
   contents = make_map_contents_string(dir->subdirs);
   printf("\tlist: reader exiting\n");
   reader_exit(&dir->monit);
-  
+
   return contents;
 }
 
@@ -436,7 +438,7 @@ int tree_remove(Tree* tree, const char* path)
   hmap_remove(parent->subdirs, last_component);
   tree_free(subdir);
   writer_exit(&parent->monit);
-  
+
   return 0;
 }
 
@@ -492,7 +494,7 @@ int tree_move(Tree* tree, const char* source, const char* target)
     writer_exit(&lca->monit);
     return ENOENT;
   }
-  
+
   source_dir = hmap_get(source_parent->subdirs, source_dir_name);
 
   if (!source_dir) {
@@ -531,7 +533,7 @@ int tree_move(Tree* tree, const char* source, const char* target)
   writer_exit(&source_parent->monit);
   writer_exit(&target_parent->monit);
   writer_exit(&lca->monit);
-  
+
   return 0;
 }
 

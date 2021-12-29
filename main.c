@@ -103,7 +103,7 @@ void move_test_async()
   Tree* tree = tree_new();
 
   printf("move_test_sync\n");
-  
+
   tree_create(tree, "/a/");
   tree_create(tree, "/b/");
   tree_create(tree, "/a/b/");
