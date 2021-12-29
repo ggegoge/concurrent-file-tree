@@ -423,6 +423,11 @@ int tree_remove(Tree* tree, const char* path)
   parent = access_dir(tree, parent_path, edit_entry, reader_exit);
   free(parent_path);
 
+  if (!parent) {
+    writer_exit(&parent->monit);
+    return ENOENT;
+  }
+  
   subdir = hmap_get(parent->subdirs, last_component);
 
   if (!subdir) {
@@ -476,6 +481,10 @@ int tree_move(Tree* tree, const char* source, const char* target)
   printf("lca_path = %s\n", lca_path);
   source_parent_path = make_path_to_parent(source, source_dir_name);
   target_parent_path = make_path_to_parent(target, target_dir_name);
+  if (!target_parent_path) {
+    free(source_parent_path);
+    return EEXIST;
+  }
 
   lca = access_dir(tree, lca_path, edit_entry, reader_exit);
   /* having locked the lca i may proceed from there onwards may i not? */
@@ -489,6 +498,7 @@ int tree_move(Tree* tree, const char* source, const char* target)
   free(target_parent_path);
 
   if (!lca || !source_parent || !target_parent) {
+    printf("nie ma chuja\n");
     writer_exit(&source_parent->monit);
     writer_exit(&target_parent->monit);
     writer_exit(&lca->monit);
@@ -498,6 +508,7 @@ int tree_move(Tree* tree, const char* source, const char* target)
   source_dir = hmap_get(source_parent->subdirs, source_dir_name);
 
   if (!source_dir) {
+    printf("nie istnieje gosc z nazwa %s\n", source_dir_name);
     writer_exit(&source_parent->monit);
     writer_exit(&target_parent->monit);
     writer_exit(&lca->monit);
@@ -505,6 +516,7 @@ int tree_move(Tree* tree, const char* source, const char* target)
   }
 
   if (hmap_get(target_parent->subdirs, target_dir_name)) {
+    printf("nie istnieje gosc z nazwa %s\n", target_dir_name);
     writer_exit(&source_parent->monit);
     writer_exit(&target_parent->monit);
     writer_exit(&lca->monit);
