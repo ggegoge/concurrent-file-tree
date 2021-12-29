@@ -152,16 +152,16 @@ Tree* access_dir(Tree* root, const char* path, int (*entry_fn) (Monitor*, bool),
     if (!root)
       break;
 
-    printf("\tacess: non final entry on %s\n", root->dir_name);
+    printf("\tacess[%lu]: non final entry on %s\n", pthread_self(), root->dir_name);
     entry_fn(&root->monit, false);
     next = hmap_get(root->subdirs, component);
-    printf("\tacess: exit on %s\n", root->dir_name);
+    printf("\tacess[%lu]: exit on %s\n", pthread_self(), root->dir_name);
     exit_fn(&root->monit);
     root = next;
   }
 
   if (root) {
-    printf("\tacess: final entry on %s\n", root->dir_name);
+    printf("\tacess[%lu]: final entry on %s\n", pthread_self(), root->dir_name);
     entry_fn(&root->monit, true);
   }
   
@@ -190,7 +190,8 @@ int writer_entry(Monitor* mon)
            pthread_self(), mon->rwait, mon->rcount, mon->wcount);
     ++mon->wwait;
     err = pthread_cond_wait(&mon->writers, &mon->mutex);
-    printf("writer %lu woke up\n", pthread_self());
+    printf("writer %lu woke up and rw=%lu rc=%lu wc=%lu\n",
+           pthread_self(), mon->rwait, mon->rcount, mon->wcount);
     --mon->wwait;
   }
 
@@ -213,7 +214,6 @@ int writer_exit(Monitor* mon)
   
   err = pthread_mutex_lock(&mon->mutex);
   assert(mon->wcount > 0 || mon->wid == pthread_self());
-  assert(mon->rcount == 0);    
   --mon->wcount;
 
   if (mon->wcount == 0)
@@ -221,10 +221,13 @@ int writer_exit(Monitor* mon)
   
   printf("\twexit %lu: --wcount\n", pthread_self());
   
-  if (mon->rwait > 0)
+  if (mon->wcount == 0 && mon->rcount == 0 && mon->rwait > 0) {
+    printf("writer %lu is waking up a reader\n", pthread_self());
     err = pthread_cond_broadcast(&mon->readers);
-  else if (mon->wwait > 0)
+  } else if (mon->wcount == 0 && mon->rcount == 0 && mon->wwait > 0) {
+    printf("writer %lu is waking up a writer\n", pthread_self());
     err = pthread_cond_signal(&mon->writers);
+  }
 
   err = pthread_mutex_unlock(&mon->mutex);
 
@@ -249,11 +252,13 @@ int reader_entry(Monitor* mon)
            pthread_self(), mon->wwait, mon->wcount);
     ++mon->rwait;
     err = pthread_cond_wait(&mon->readers, &mon->mutex);
-    printf("reader %lu woke up\n", pthread_self());
+    printf("reader %lu woke up and ww=%lu wc=%lu\n",
+           pthread_self(), mon->wwait, mon->wcount);
     --mon->rwait;
   }
 
   assert(mon->wcount == 0 || mon->wid == pthread_self());
+  printf("\trentr %lu: ++rcount\n", pthread_self());
   ++mon->rcount;
   err = pthread_mutex_unlock(&mon->mutex);
 
@@ -267,13 +272,17 @@ int reader_exit(Monitor* mon)
     return 0;
 
   err = pthread_mutex_lock(&mon->mutex);
+  printf("\trexit %lu: --rcount\n", pthread_self());
   --mon->rcount;
   assert(mon->wcount == 0 || mon->wid == pthread_self());
   
-  if (mon->rcount == 0 && mon->wwait > 0)
+  if (mon->wcount == 0 && mon->rcount == 0 && mon->wwait > 0) {
+    printf("reader %lu is waking up a writer\n", pthread_self());
     err = pthread_cond_signal(&mon->writers);
-  else
+  } else if (mon->wcount == 0 && mon->rcount == 0) {
+    printf("reader %lu is waking up a reader\n", pthread_self());
     err = pthread_cond_broadcast(&mon->readers);
+  }
 
   err = pthread_mutex_unlock(&mon->mutex);
   
