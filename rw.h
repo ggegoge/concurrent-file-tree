@@ -1,18 +1,18 @@
-
 /**
  * An interface for a monitor-like readers and writers locking mechanism.
  *
- * It lets you enter and exit a monitor in both a reader and writer
- * style. Useful for guarding objects from which you may read or write
- * (obviously).
+ * It lets you enter and exit a monitor in both reader and writer style. Useful
+ * for guarding objects from which you may want to read or write (duh).
  *
  * Works in the classic way apart from the possibility of entering the same
- * monitor multiple times by a thread who has current write access to it.
+ * monitor multiple times by a single thread which has the write access to it.
  *
  * eg. a thread may call `writer_entry` and get noted as the current writer in
  * the monitor and then it may call `{writer,reader}_entry` more times and get
  * inside as well. It won't affect the mechanism guarded by the monitor as it is
- * a single thread has the access and it may be desired to entry multiple times.
+ * a single thread with the access thus it must work sequentially.
+ *
+ * Described behaviour may be desired that's why it is implemented this way.
  */
 
 #ifndef _RW_H_
@@ -21,7 +21,7 @@
 #include <stddef.h>
 #include <pthread.h>
 
-/** Using this structure to store all of a tree's synchronisation variables. */
+/** Using this structure to represent a r&w lock, using mutices and conds. */
 typedef struct Monitor {
   pthread_mutex_t mutex;
   pthread_cond_t readers;
@@ -39,8 +39,7 @@ typedef struct Monitor {
 
 
 /* All functions return an error code that is 0 in case of success or some errno
- * value otherwise. Usually it's just what the pthread_* functions have returned
- * passed forward. */
+ * value otherwise. Usually it's what pthread_* functions returned. */
 
 
 /** Initialise a monitor. */
@@ -51,7 +50,7 @@ int monit_destroy(Monitor* mon);
 
 /**
  * Lock the monitor as a writer. Now no-one will be granted acess to it apart
- * from a peculiar case if the same thread tries to enter it again in any way.
+ * from a peculiar case if the same thread tries to enter it again (in any way).
  * This is why the writer id is kept by the Monitor.
  */
 int writer_entry(Monitor* mon);
@@ -62,7 +61,7 @@ int writer_entry(Monitor* mon);
  */
 int writer_exit(Monitor* mon);
 
-/** Weak lock on the monitor with reader privileges. */
+/** Weak lock on the monitor, get reader privileges. */
 int reader_entry(Monitor* mon);
 
 /** Unlock the monitor as a reader. */

@@ -19,7 +19,7 @@ int monit_init(Monitor* mon)
 
   mon->rwait = mon->wwait = mon->wcount = mon->rcount = mon->wid = 0;
   mon->wwoken = mon->rwoken = 0;
-  
+
   return 0;
 }
 
@@ -48,14 +48,16 @@ int writer_entry(Monitor* mon)
   /* If I'm a writer here already then I can write along as I am a sequential
    * being. Apart from that I wait if there are some others working. */
   while (!(mon->wcount > 0 && mon->wid == pthread_self()) &&
-      (mon->rwait > 0 || mon->rcount > 0 || mon->wcount > 0 || mon->wwait > 0)) {
+         (mon->rwait > 0 || mon->rcount > 0 || mon->wcount > 0 || mon->wwait > 0)) {
     printf("writer %lu goes to sleep cause rw=%lu rc=%lu wc=%lu\n",
            pthread_self(), mon->rwait, mon->rcount, mon->wcount);
     ++mon->wwait;
-    err = pthread_cond_wait(&mon->writers, &mon->mutex);    
+    err = pthread_cond_wait(&mon->writers, &mon->mutex);
     printf("writer %lu woke up and rw=%lu rc=%lu wc=%lu\n",
            pthread_self(), mon->rwait, mon->rcount, mon->wcount);
     --mon->wwait;
+
+    /* check if the wakeup was not spurious */
     if (mon->wwoken > 0) {
       --mon->wwoken;
       break;
@@ -115,7 +117,7 @@ int reader_entry(Monitor* mon)
   /* I wait if either im not the current owner of this or if I have other more
    * classical reasons. */
   while (!(mon->wcount > 0 && mon->wid == pthread_self()) &&
-      (mon->wwait > 0 || mon->wcount > 0)) {
+         (mon->wwait > 0 || mon->wcount > 0)) {
     printf("reader %lu goes to sleep cause ww=%lu wc=%lu\n",
            pthread_self(), mon->wwait, mon->wcount);
     ++mon->rwait;
