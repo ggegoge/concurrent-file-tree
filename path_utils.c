@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -162,4 +163,16 @@ bool is_subpath(const char* path1, const char* path2)
     else if (strcmp(comp1, comp2) != 0)
       return false;
   }
+}
+
+char* path_lca(const char* path1, const char* path2)
+{
+  size_t i;
+  size_t len1 = strlen(path1);
+  size_t len2 = strlen(path2);
+  size_t max_len = len1 > len2 ? len1 : len2;
+  for (i = 0; i < max_len && path1[i] == path2[i]; ++i)
+    ;
+
+  return strndup(path1, i);
 }
