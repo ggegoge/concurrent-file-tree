@@ -19,22 +19,6 @@
 #include "rw.h"
 #include "Tree.h"
 
-/* TODO: the three fnctions
- *   1) tree_create
- *   2) tree_remove
- *   3) tree_move
- * have some striking similairities (they all access the parent and then do
- * something with it). Can we somehow refactor that? I'm sure we can...
- * But returning errnos in various places makes it wearisome af.
- * also i cannot refactor a removing function even though i need it in both
- * move and remove but in the snd one i do it only on a non-empty dir... */
-
-/* find parent and a dir? this sort of refactor? hard asf as i need to remember
- * the subdir name after this function would get called in most of the cases
- * jfc */
-/* void find_parent_dir(Tree* tree, const char* path, Tree** parent, Tree** subdir); */
-
-
 /** This is the root directory name. */
 #define ROOT_PATH "/"
 
@@ -109,9 +93,9 @@ static Tree* find_dir(Tree* root, const char* path)
 
 /**
  * Find a directory under a `path`. The `entry_fn` function will be used to
- * access each of the passed by `Tree`'s monitor. It returns an exit code and
+ * access each of the passed by dirs' monitors. It returns an exit code and
  * its parameters are the monitor in question and a boolean flag telling whether
- * it is visiting the target's node monitor or one on the way.
+ * it is visiting the target's directory monitor or one on the way.
  *
  * The `exit_fn` function works similarily but it will only be called on non-final
  * directories. */
