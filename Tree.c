@@ -84,25 +84,6 @@ static Tree* new_dir(const char* dname)
 }
 
 /**
- * Find the tree corresponding to a given `path`. Simple dir tree search.
- * Returns `NULL` if no such directory exists.
- */
-static Tree* find_dir(Tree* root, const char* path)
-{
-  char component[MAX_FOLDER_NAME_LENGTH + 1];
-  const char* subpath = path;
-
-  while ((subpath = split_path(subpath, component))) {
-    if (!root)
-      break;
-
-    root = hmap_get(root->subdirs, component);
-  }
-
-  return root;
-}
-
-/**
  * Find a directory under a `path`. The `entry_fn` function will be used to
  * access each of the passed by dirs' monitors. It returns an exit code and
  * its parameters are the monitor in question and a boolean flag telling whether
