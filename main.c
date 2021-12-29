@@ -6,8 +6,10 @@
 #include <pthread.h>
 
 #include "Tree.h"
+#include "path_utils.h"
 
 #define ITER 100
+#define N 3
 
 void simple_tree_test()
 {
@@ -124,12 +126,198 @@ void move_test_async()
   tree_free(tree);
 }
 
+void* creator(void* tree)
+{
+  for (int k = 0; k < 20; k++) {
+    char path[12];
+    int n = rand() % 3 + 1;
+
+    for (int i = 0; i < n; i++) {
+      path[2 * i] = '/';
+      path[2 * i + 1] = 'a' + rand() % 4;
+    }
+
+    path[2 * n] = '/';
+    path[2 * n + 1] = '\0';
+
+    //printf("%s\n", path);
+    tree_create((Tree*)tree, path);
+  }
+
+  return NULL;
+}
+
+void* remover(void* tree)
+{
+  for (int k = 0; k < 20; k++) {
+    char path[12];
+    int n = rand() % 3 + 1;
+
+    for (int i = 0; i < n; i++) {
+      path[2 * i] = '/';
+      path[2 * i + 1] = 'a' + rand() % 4;
+    }
+
+    path[2 * n] = '/';
+    path[2 * n + 1] = '\0';
+    tree_remove((Tree*)tree, path);
+  }
+
+  return NULL;
+}
+
+void* lister(void* tree)
+{
+  for (int k = 0; k < 20; k++) {
+    char path[12];
+    int n = rand() % 4;
+
+    for (int i = 0; i < n; i++) {
+      path[2 * i] = '/';
+      path[2 * i + 1] = 'a' + rand() % 4;
+    }
+
+    path[2 * n] = '/';
+    path[2 * n + 1] = '\0';
+    char* list = tree_list((Tree*)tree, path);
+
+    if (list) {
+      //pthread_mutex_lock(&printf_mutex);
+      //printf("%s\n", list);
+      //pthread_mutex_unlock(&printf_mutex);
+      free(list);
+    }
+  }
+
+  return NULL;
+}
+
+void* mover(void* tree)
+{
+  for (int k = 0; k < 20; k++) {
+    char path_s[12];
+    char path_t[12];
+    int n_s = rand() % 3 + 1;
+    int n_t = rand() % 4;
+
+    for (int i = 0; i < n_s; i++) {
+      path_s[2 * i] = '/';
+      path_s[2 * i + 1] = 'a' + rand() % 4;
+    }
+
+    path_s[2 * n_s] = '/';
+    path_s[2 * n_s + 1] = '\0';
+
+    for (int i = 0; i < n_t; i++) {
+      path_t[2 * i] = '/';
+      path_t[2 * i + 1] = 'a' + rand() % 4;
+    }
+
+    path_t[2 * n_t] = '/';
+    path_t[2 * n_t + 1] = '\0';
+
+    tree_move((Tree*)tree, path_s, path_t);
+  }
+
+  return NULL;
+}
+
+void test2()
+{
+  Tree* tree = tree_new();
+
+  printf("ALEATORY THREADS TEST\n");
+  
+  //pthread_mutex_init(&printf_mutex, NULL);
+
+  srand(2137);
+
+  pthread_t c[N], r[N], m[N], l[N];
+
+  for (int i = 0; i < N; i++) {
+    pthread_create(&c[i], NULL, &creator, tree);
+    pthread_create(&r[i], NULL, &remover, tree);
+    pthread_create(&m[i], NULL, &mover, tree);
+    pthread_create(&l[i], NULL, &lister, tree);
+  }
+
+  for (int i = 0; i < N; i++) {
+    pthread_join(c[i], NULL);
+  }
+
+  for (int i = 0; i < N; i++) {
+    pthread_join(r[i], NULL);
+  }
+
+  for (int i = 0; i < N; i++) {
+    pthread_join(m[i], NULL);
+  }
+
+  for (int i = 0; i < N; i++) {
+    pthread_join(l[i], NULL);
+  }
+
+  //pthread_mutex_destroy(&printf_mutex);
+
+  //print_tree(tree);
+
+  tree_free(tree);
+}
+
+void test_lca()
+{
+  char* p1 = "/a/b/c/d/";
+  char* p2 = "/a/b/x/y/";
+  const char* p1lca;
+  const char* p2lca;  
+  char* lca_path = path_lca_move(p1, p2, &p1lca, &p2lca);
+  assert(is_path_valid(p1));
+  assert(is_path_valid(p2));
+  printf("common_path = %s, restings=%s and %s\n", lca_path, p1lca, p2lca);
+  free(lca_path);
+
+  p1 = "/";
+  p2 = "/b/";
+  lca_path = path_lca_move(p1, p2, &p1lca, &p2lca);
+  assert(is_path_valid(p1));
+  assert(is_path_valid(p2));
+  printf("common_path = %s, restings=%s and %s\n", lca_path, p1lca, p2lca);
+  free(lca_path);
+
+
+  p1 = "/x/";
+  p2 = "/b/";
+  lca_path = path_lca_move(p1, p2, &p1lca, &p2lca);
+  assert(is_path_valid(p1));
+  assert(is_path_valid(p2));
+  printf("common_path = %s, restings=%s and %s\n", lca_path, p1lca, p2lca);
+  free(lca_path);
+
+  p1 = "/x/";
+  p2 = "/x/";
+  lca_path = path_lca_move(p1, p2, &p1lca, &p2lca);
+  assert(is_path_valid(p1));
+  assert(is_path_valid(p2));
+  printf("common_path = %s, restings=%s and %s\n", lca_path, p1lca, p2lca);
+  free(lca_path);
+
+  
+  p1 = "/x/y/";
+  p2 = "/x/";
+  lca_path = path_lca_move(p1, p2, &p1lca, &p2lca);
+  assert(is_path_valid(p1));
+  assert(is_path_valid(p2));
+  printf("common_path = %s, restings=%s and %s\n", lca_path, p1lca, p2lca);
+  free(lca_path);
+}
 
 int main(void)
 {
-  simple_tree_test();
-  errors_tree_test();
-  move_test_async();
-
+  /* simple_tree_test();
+   * errors_tree_test();
+   * move_test_async(); */
+  test2();
+  test_lca();
+  
   return 0;
 }

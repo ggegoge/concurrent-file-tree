@@ -171,7 +171,7 @@ void tree_free(Tree* tree)
 
 char* tree_list(Tree* tree, const char* path)
 {
-  printf("ls %s\n", path);
+  printf("ls %s     | %lu\n", path, pthread_self());
   Tree* dir;
   char* contents;
 
@@ -192,7 +192,7 @@ char* tree_list(Tree* tree, const char* path)
 
 int tree_create(Tree* tree, const char* path)
 {
-  printf("mdkir %s\n", path);
+  printf("mdkir %s     | %lu\n", path, pthread_self());
   Tree* parent;
   Tree* subdir;
   char* parent_path;
@@ -234,7 +234,7 @@ exiting:
 
 int tree_remove(Tree* tree, const char* path)
 {
-  printf("rmdir %s\n", path);
+  printf("rmdir %s     | %lu\n", path, pthread_self());
   Tree* parent;
   Tree* subdir;
   char* parent_path;
