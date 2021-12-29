@@ -11,7 +11,7 @@ bool is_path_valid(const char* path)
 {
   size_t len = strlen(path);
 
-  if (len == 0 || len > MAX_PATH_LENGTH)
+  if (len == 0 || len > MAX_PATH_LEN)
     return false;
 
   if (path[0] != '/' || path[len - 1] != '/')
@@ -25,7 +25,7 @@ bool is_path_valid(const char* path)
                             '/'); // End of current path component, at '/'.
 
     if (!name_end || name_end == name_start ||
-        name_end > name_start + MAX_FOLDER_NAME_LENGTH)
+        name_end > name_start + MAX_DIR_NAME_LEN)
       return false;
 
     for (const char* p = name_start; p != name_end; ++p)
@@ -47,7 +47,7 @@ const char* split_path(const char* path, char* component)
 
   if (component) {
     int len = subpath - (path + 1);
-    assert(len >= 1 && len <= MAX_FOLDER_NAME_LENGTH);
+    assert(len >= 1 && len <= MAX_DIR_NAME_LEN);
     strncpy(component, path + 1, len);
     component[len] = '\0';
   }
@@ -75,7 +75,7 @@ char* make_path_to_parent(const char* path, char* component)
 
   if (component) {
     size_t component_len = len - subpath_len - 1; // Skip final '/' as well.
-    assert(component_len >= 1 && component_len <= MAX_FOLDER_NAME_LENGTH);
+    assert(component_len >= 1 && component_len <= MAX_DIR_NAME_LEN);
     strncpy(component, p + 1, component_len);
     component[component_len] = '\0';
   }
@@ -145,8 +145,8 @@ char* make_map_contents_string(HashMap* map)
 /* return: p1 \subseteq p2? */
 bool is_subpath(const char* path1, const char* path2)
 {
-  char comp1[MAX_FOLDER_NAME_LENGTH + 1];
-  char comp2[MAX_FOLDER_NAME_LENGTH + 1];
+  char comp1[MAX_DIR_NAME_LEN + 1];
+  char comp2[MAX_DIR_NAME_LEN + 1];
   const char* sub1 = path1;
   const char* sub2 = path2;
 

@@ -94,7 +94,7 @@ static Tree* new_dir(const char* dname)
 static Tree* access_dir(Tree* root, const char* path,
                         int entry_fn(Monitor*, bool), int exit_fn(Monitor*))
 {
-  char component[MAX_FOLDER_NAME_LENGTH + 1];
+  char component[MAX_DIR_NAME_LEN + 1];
   const char* subpath = path;
   Tree* next;
 
@@ -195,7 +195,7 @@ int tree_create(Tree* tree, const char* path)
   Tree* parent;
   Tree* subdir;
   char* parent_path;
-  char last_component[MAX_FOLDER_NAME_LENGTH + 1];
+  char last_component[MAX_DIR_NAME_LEN + 1];
   int err = 0;
 
   if (!is_path_valid(path))
@@ -237,7 +237,7 @@ int tree_remove(Tree* tree, const char* path)
   Tree* parent;
   Tree* subdir;
   char* parent_path;
-  char last_component[MAX_FOLDER_NAME_LENGTH + 1];
+  char last_component[MAX_DIR_NAME_LEN + 1];
   int err = 0;
 
   if (!is_path_valid(path))
@@ -305,11 +305,11 @@ int tree_move(Tree* tree, const char* source, const char* target)
   Tree* source_parent;
   char* source_parent_path;
   Tree* source_dir;
-  char source_dir_name[MAX_FOLDER_NAME_LENGTH + 1];
+  char source_dir_name[MAX_DIR_NAME_LEN + 1];
   Tree* target_parent;
   char* target_parent_path;
   Tree* target_dir;
-  char target_dir_name[MAX_FOLDER_NAME_LENGTH + 1];
+  char target_dir_name[MAX_DIR_NAME_LEN + 1];
   int err = 0;
 
   if (!is_path_valid(source) || !is_path_valid(target))
