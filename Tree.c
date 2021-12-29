@@ -143,8 +143,8 @@ Tree* find_dir(Tree* root, const char* path)
  *
  * The `exit_fn` function works similarily but it will only be called on non-final
  * directories. */
-Tree* access_dir(Tree* root, const char* path, int (*entry_fn) (Monitor*, bool),
-                 int (*exit_fn) (Monitor*))
+Tree* access_dir(Tree* root, const char* path, int entry_fn(Monitor*, bool),
+                 int exit_fn(Monitor*))
 {
   char component[MAX_FOLDER_NAME_LENGTH + 1];
   const char* subpath = path;
