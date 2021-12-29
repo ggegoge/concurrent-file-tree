@@ -35,6 +35,11 @@ typedef struct Monitor {
 } Monitor;
 
 
+/* All functions return an error code that is 0 in case of success or some errno
+ * value otherwise. Usually it's just what the pthread_* functions have returned
+ * passed forward. */
+
+
 /** Initialise a monitor. */
 int monit_init(Monitor* mon);
 

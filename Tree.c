@@ -56,7 +56,7 @@ struct Tree {
  * A helper function for creating a heap allocated new empty directory with
  * a given name. Copies the dname string.
  */
-Tree* new_dir(const char* dname)
+static Tree* new_dir(const char* dname)
 {
   Tree* tree = malloc(sizeof(Tree));
   char* name = strdup(dname);
@@ -79,7 +79,7 @@ Tree* new_dir(const char* dname)
  * Find the tree corresponding to a given `path`. Simple dir tree search.
  * Returns `NULL` if no such directory exists.
  */
-Tree* find_dir(Tree* root, const char* path)
+static Tree* find_dir(Tree* root, const char* path)
 {
   char component[MAX_FOLDER_NAME_LENGTH + 1];
   const char* subpath = path;
@@ -102,8 +102,8 @@ Tree* find_dir(Tree* root, const char* path)
  *
  * The `exit_fn` function works similarily but it will only be called on non-final
  * directories. */
-Tree* access_dir(Tree* root, const char* path, int entry_fn(Monitor*, bool),
-                 int exit_fn(Monitor*))
+static Tree* access_dir(Tree* root, const char* path,
+                        int entry_fn(Monitor*, bool), int exit_fn(Monitor*))
 {
   char component[MAX_FOLDER_NAME_LENGTH + 1];
   const char* subpath = path;
@@ -138,7 +138,7 @@ Tree* access_dir(Tree* root, const char* path, int entry_fn(Monitor*, bool),
  * Note: this function has a signature appropriate for the `entry_fn` argument
  * in `access_dir`.
  */
-int edit_entry(Monitor* mon, bool islast)
+static int edit_entry(Monitor* mon, bool islast)
 {
   if (islast)
     return writer_entry(mon);
@@ -147,7 +147,7 @@ int edit_entry(Monitor* mon, bool islast)
 }
 
 /** A wrapper for reader's dir access. Matches `entry_fn` in `access_dir`. */
-int list_entry(Monitor* mon, bool islast)
+static int list_entry(Monitor* mon, bool islast)
 {
   (void)islast;
   return reader_entry(mon);
@@ -266,7 +266,7 @@ int tree_remove(Tree* tree, const char* path)
     writer_exit(&parent->monit);
     return ENOENT;
   }
-  
+
   subdir = hmap_get(parent->subdirs, last_component);
 
   if (!subdir) {
@@ -320,6 +320,7 @@ int tree_move(Tree* tree, const char* source, const char* target)
   printf("lca_path = %s\n", lca_path);
   source_parent_path = make_path_to_parent(source, source_dir_name);
   target_parent_path = make_path_to_parent(target, target_dir_name);
+
   if (!target_parent_path) {
     free(source_parent_path);
     return EEXIST;
