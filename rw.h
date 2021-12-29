@@ -30,6 +30,9 @@ typedef struct Monitor {
   size_t wwait;
   size_t rcount;
   size_t wcount;
+  /* these two will help us with spurious wakeups (I hope) */
+  size_t wwoken;
+  size_t rwoken;
   /* id of the current writer */
   pthread_t wid;
 } Monitor;

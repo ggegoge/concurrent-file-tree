@@ -18,6 +18,8 @@ int monit_init(Monitor* mon)
     return err;
 
   mon->rwait = mon->wwait = mon->wcount = mon->rcount = mon->wid = 0;
+  mon->wwoken = mon->rwoken = 0;
+  
   return 0;
 }
 
@@ -45,15 +47,19 @@ int writer_entry(Monitor* mon)
 
   /* If I'm a writer here already then I can write along as I am a sequential
    * being. Apart from that I wait if there are some others working. */
-  if (!(mon->wcount > 0 && mon->wid == pthread_self()) &&
+  while (!(mon->wcount > 0 && mon->wid == pthread_self()) &&
       (mon->rwait > 0 || mon->rcount > 0 || mon->wcount > 0 || mon->wwait > 0)) {
     printf("writer %lu goes to sleep cause rw=%lu rc=%lu wc=%lu\n",
            pthread_self(), mon->rwait, mon->rcount, mon->wcount);
     ++mon->wwait;
-    err = pthread_cond_wait(&mon->writers, &mon->mutex);
+    err = pthread_cond_wait(&mon->writers, &mon->mutex);    
     printf("writer %lu woke up and rw=%lu rc=%lu wc=%lu\n",
            pthread_self(), mon->rwait, mon->rcount, mon->wcount);
     --mon->wwait;
+    if (mon->wwoken > 0) {
+      --mon->wwoken;
+      break;
+    }
   }
 
   ++mon->wcount;
@@ -84,9 +90,11 @@ int writer_exit(Monitor* mon)
 
   if (mon->wcount == 0 && mon->rcount == 0 && mon->rwait > 0) {
     printf("writer %lu is waking up a reader\n", pthread_self());
+    mon->rwoken = mon->rwait;
     err = pthread_cond_broadcast(&mon->readers);
   } else if (mon->wcount == 0 && mon->rcount == 0 && mon->wwait > 0) {
     printf("writer %lu is waking up a writer\n", pthread_self());
+    mon->wwoken = 1;
     err = pthread_cond_signal(&mon->writers);
   }
 
@@ -106,7 +114,7 @@ int reader_entry(Monitor* mon)
 
   /* I wait if either im not the current owner of this or if I have other more
    * classical reasons. */
-  if (!(mon->wcount > 0 && mon->wid == pthread_self()) &&
+  while (!(mon->wcount > 0 && mon->wid == pthread_self()) &&
       (mon->wwait > 0 || mon->wcount > 0)) {
     printf("reader %lu goes to sleep cause ww=%lu wc=%lu\n",
            pthread_self(), mon->wwait, mon->wcount);
@@ -115,6 +123,12 @@ int reader_entry(Monitor* mon)
     printf("reader %lu woke up and ww=%lu wc=%lu\n",
            pthread_self(), mon->wwait, mon->wcount);
     --mon->rwait;
+
+    /* check if the wakeup was not spurious */
+    if (mon->rwoken > 0) {
+      --mon->rwoken;
+      break;
+    }
   }
 
   assert(mon->wcount == 0 || mon->wid == pthread_self());
@@ -139,9 +153,11 @@ int reader_exit(Monitor* mon)
 
   if (mon->wcount == 0 && mon->rcount == 0 && mon->wwait > 0) {
     printf("reader %lu is waking up a writer\n", pthread_self());
+    mon->wwoken = 1;
     err = pthread_cond_signal(&mon->writers);
   } else if (mon->wcount == 0 && mon->rcount == 0) {
     printf("reader %lu is waking up a reader\n", pthread_self());
+    mon->rwoken = mon->rwait;
     err = pthread_cond_broadcast(&mon->readers);
   }
 
