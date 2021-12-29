@@ -286,19 +286,39 @@ exiting:
   return err;
 }
 
-/* If we think about it then this bears some resemblence to the classic hungry
- * philosophers problem. Each `tree_move` recquires posessing two ``forks'' in
+/**
+ * If we think about it then this bears some resemblence to the classic hungry
+ * philosophers problem. Each `tree_move` recquires posessing two ``forks''. In
  * this analogy those are source's parent dir and target's parent dir. Naïve
  * sequential taking of the forks won't work as we may starve ourselves with
  * a fellow philosopher. Breaking the symetry is not really possible neither.
  *
  * Solution: join the forks with a string and take the string.
  * Translated to the actual tree: lock the LCA of target and source
- * and only then proceed. */
+ * and only then proceed.
+ *
+ * So this functions accesses both the contents under p1 and p2 and locks quite
+ * writerly three dirs: those corresponding to paths and their LCA.
+ * The caller should then unlock them themself via `writer_exit`. */
+static void double_access(const char* p1, const char* p2, Tree* tree,
+                          Tree** common, Tree** t1, Tree** t2)
+{
+  char* common_path = path_lca(p1, p2);
+  printf("common_path = %s\n", common_path);
+
+  *common = access_dir(tree, common_path, edit_entry, reader_exit);
+  /* having locked the *common i may proceed from there onwards may i not? */
+  *t1 = access_dir(tree, p1, edit_entry, reader_exit);
+  printf("%lu: got the source parent!\n", pthread_self());
+  *t2 = access_dir(tree, p2, edit_entry, reader_exit);
+  printf("%lu got the target parent!\n", pthread_self());
+
+  free(common_path);
+}
+
 int tree_move(Tree* tree, const char* source, const char* target)
 {
   printf("mv %s %s    | %lu\n", source, target, pthread_self());
-  char* lca_path;
   Tree* lca;
   Tree* source_parent;
   char* source_parent_path;
@@ -317,8 +337,6 @@ int tree_move(Tree* tree, const char* source, const char* target)
   else if (is_subpath(source, target))
     return ESUBPATH;
 
-  lca_path = path_lca(source, target);
-  printf("lca_path = %s\n", lca_path);
   source_parent_path = make_path_to_parent(source, source_dir_name);
   target_parent_path = make_path_to_parent(target, target_dir_name);
 
@@ -327,14 +345,9 @@ int tree_move(Tree* tree, const char* source, const char* target)
     return EEXIST;
   }
 
-  lca = access_dir(tree, lca_path, edit_entry, reader_exit);
-  /* having locked the lca i may proceed from there onwards may i not? */
-  source_parent = access_dir(tree, source_parent_path, edit_entry, reader_exit);
-  printf("%lu: got the source parent!\n", pthread_self());
-  target_parent = access_dir(tree, target_parent_path, edit_entry, reader_exit);
-  printf("%lu got the target parent!\n", pthread_self());
+  double_access(source_parent_path, target_parent_path, tree,
+                &lca, &source_parent, &target_parent);
 
-  free(lca_path);
   free(source_parent_path);
   free(target_parent_path);
 
