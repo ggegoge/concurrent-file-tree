@@ -5,14 +5,14 @@
 
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <pthread.h>
+#include <unistd.h>
 
 #include <assert.h>
-#include <unistd.h>
+#include <stdio.h>
 
 #include "HashMap.h"
 #include "path_utils.h"
@@ -21,6 +21,17 @@
 
 /** This is the root directory name. */
 #define ROOT_PATH "/"
+
+/**
+ * A macro for centralised function exiting with an error code. It assumes that
+ * there is an `int err` declared previously and a label `exiting` at which it
+ * should go had the function detected an error.
+ */
+#define ERROR(errno)                            \
+  do {                                          \
+    err = errno;                                \
+    goto exiting;                               \
+  } while(0)
 
 /**
  * This is a recursive data structure representing a directory tree.
@@ -223,17 +234,13 @@ int tree_create(Tree* tree, const char* path)
     return ENOENT;
 
   /* The subdir we want to create already exists. */
-  if (hmap_get(parent->subdirs, last_component)) {
-    err =  EEXIST;
-    goto exiting;
-  }
+  if (hmap_get(parent->subdirs, last_component))
+    ERROR(EEXIST);
 
   subdir = new_dir(last_component);
 
-  if (!subdir) {
-    err = ENOMEM;
-    goto exiting;
-  }
+  if (!subdir)
+    ERROR(ENOMEM);
 
   /* Add the newly created subdirectory as a parent's child */
   hmap_insert(parent->subdirs, subdir->dir_name, subdir);
@@ -261,22 +268,16 @@ int tree_remove(Tree* tree, const char* path)
   parent = access_dir(tree, parent_path, edit_entry, reader_exit);
   free(parent_path);
 
-  if (!parent) {
-    err = ENOENT;
-    goto exiting;
-  }
+  if (!parent)
+    ERROR(ENOENT);
 
   subdir = hmap_get(parent->subdirs, last_component);
 
-  if (!subdir) {
-    err = ENOENT;
-    goto exiting;
-  }
+  if (!subdir)
+    ERROR(ENOENT);
 
-  if (hmap_size(subdir->subdirs) > 0) {
-    err = ENOTEMPTY;
-    goto exiting;
-  }
+  if (hmap_size(subdir->subdirs) > 0)
+    ERROR(ENOTEMPTY);
 
   hmap_remove(parent->subdirs, last_component);
   tree_free(subdir);
@@ -353,32 +354,27 @@ int tree_move(Tree* tree, const char* source, const char* target)
 
   if (!lca || !source_parent || !target_parent) {
     printf("nie ma chuja\n");
-    err = ENOENT;
-    goto exiting;
+    ERROR(ENOENT);
   }
 
   source_dir = hmap_get(source_parent->subdirs, source_dir_name);
 
   if (!source_dir) {
     printf("nie istnieje gosc z nazwa %s\n", source_dir_name);
-    err = ENOENT;
-    goto exiting;
+    ERROR(ENOENT);
   }
 
   if (hmap_get(target_parent->subdirs, target_dir_name)) {
-    printf("nie istnieje gosc z nazwa %s\n", target_dir_name);
-    err = EEXIST;
-    goto exiting;
+    printf("juz istnieje gosc z nazwa %s\n", target_dir_name);
+    ERROR(EEXIST);
   }
 
   /* remove ourselves from one map and add to another */
   hmap_remove(source_parent->subdirs, source_dir_name);
   target_dir = new_dir(target_dir_name);
 
-  if (!target_dir) {
-    err = ENOMEM;
-    goto exiting;
-  }
+  if (!target_dir)
+    ERROR(ENOMEM);
 
   hmap_insert(target_parent->subdirs, target_dir->dir_name, target_dir);
 
