@@ -34,12 +34,8 @@
   } while(0)
 
 /**
- * This is a recursive data structure representing a directory tree.
- * One mutex and two conditionals per node. We will do this the following way:
- * readers & writers but with listers & anything-else'ers.
- *
- * Also: if there are changes somewhere then you shouldn't proceed to visit its
- * descendants until those take place.
+ * This is a recursive data structure representing a directory tree. It keeps
+ * a monitor for access protection.
  */
 struct Tree {
   Monitor monit;
@@ -84,13 +80,15 @@ static Tree* new_dir(const char* dname)
 }
 
 /**
- * Find a directory under a `path`. The `entry_fn` function will be used to
- * access each of the passed by dirs' monitors. It returns an exit code and
- * its parameters are the monitor in question and a boolean flag telling whether
- * it is visiting the target's directory monitor or one on the way.
+ * Find a directory under a `path` and lock it.
+ * The `entry_fn` function will be used to access each of the passed by dirs'
+ * monitors. It returns an exit code and its parameters are the monitor in
+ * question and a boolean flag telling whether it is visiting the target monitor
+ * or one on the way.
  *
  * The `exit_fn` function works similarily but it will only be called on non-final
- * directories. */
+ * directories. Exiting the target dir should be done by the caller.
+ */
 static Tree* access_dir(Tree* root, const char* path,
                         int entry_fn(Monitor*, bool), int exit_fn(Monitor*))
 {
@@ -119,13 +117,13 @@ static Tree* access_dir(Tree* root, const char* path,
 }
 
 /**
- * This is how the editing thread will enter directories. Depending on whether
- * this is their destination dir (`islast`) they will either be treated as a
- * writer or as a reader. Meaning that we treat an editing operation on an
+ * This is how the editing operations will enter directories. Depending on
+ * whether this is their destination dir (`islast`) they will either lock it as
+ * a writer or as a reader. Meaning that we treat an editing operation on an
  * ancestoral directory as a reader and it's a writer only on the last one.
  *
- * Note: this function has a signature appropriate for the `entry_fn` argument
- * in `access_dir`.
+ * This function has a signature appropriate for the `entry_fn` argument in
+ * `access_dir`.
  */
 static int edit_entry(Monitor* mon, bool islast)
 {
@@ -135,7 +133,10 @@ static int edit_entry(Monitor* mon, bool islast)
     return reader_entry(mon);
 }
 
-/** A wrapper for reader's dir access. Matches `entry_fn` in `access_dir`. */
+/**
+ * For `tree_list` accessing of directories. A wrapper for reader's dir access.
+ * Matches `entry_fn` in `access_dir`.
+ */
 static int list_entry(Monitor* mon, bool islast)
 {
   (void)islast;
@@ -149,7 +150,6 @@ Tree* tree_new()
   return new_dir(ROOT_PATH);
 }
 
-/** Free all the memory stored by a tree in a recursive manner. */
 void tree_free(Tree* tree)
 {
   HashMapIterator it = hmap_iterator(tree->subdirs);
@@ -157,6 +157,7 @@ void tree_free(Tree* tree)
   void* subdir_ptr;
   Tree* subdir;
 
+  /* freeing descendants first recursively */
   while (hmap_next(tree->subdirs, &it, &subdir_name, &subdir_ptr)) {
     subdir = (Tree*)subdir_ptr;
     tree_free(subdir);
@@ -272,30 +273,31 @@ exiting:
  * If we think about it then this bears some resemblence to the classic hungry
  * philosophers problem. Each `tree_move` recquires posessing two ``forks''. In
  * this analogy those are source's parent dir and target's parent dir. Naïve
- * sequential taking of the forks won't work as we may starve ourselves with
- * a fellow philosopher. Breaking the symetry is not really possible neither.
+ * sequential taking of the two forks one by one won't work as we may starve
+ * ourselves with a fellow philosopher. Breaking the symetry is not really
+ * possible neither.
  *
- * Solution: join the forks with a string and take the string.
- * Translated to the actual tree: lock the LCA of target and source
- * and only then proceed.
+ * Solution: ``join the forks with a string and take the string.''
+ * Translated to the actual tree: lock the LCA of target and source first.
  *
- * So this functions accesses both the contents under p1 and p2 and locks quite
+ * This function accesses both the contents under p1 and p2 and locks quite
  * writerly three dirs: those corresponding to paths and their LCA.
- * The caller should then unlock them themself via `writer_exit`. */
+ * The caller should then unlock all of them themself via `writer_exit`.
+ */
 static void double_access(const char* p1, const char* p2, Tree* tree,
-                          Tree** common, Tree** t1, Tree** t2)
+                          Tree** lca, Tree** t1, Tree** t2)
 {
-  char* common_path = path_lca(p1, p2);
-  printf("common_path = %s\n", common_path);
+  char* lca_path = path_lca(p1, p2);
+  printf("common_path = %s\n", lca_path);
 
-  *common = access_dir(tree, common_path, edit_entry, reader_exit);
-  /* having locked the *common i may proceed from there onwards may i not? */
+  *lca = access_dir(tree, lca_path, edit_entry, reader_exit);
+  /* Having locked the lca I am free to take the other two. */
   *t1 = access_dir(tree, p1, edit_entry, reader_exit);
   printf("%lu: got the source parent!\n", pthread_self());
   *t2 = access_dir(tree, p2, edit_entry, reader_exit);
   printf("%lu got the target parent!\n", pthread_self());
 
-  free(common_path);
+  free(lca_path);
 }
 
 int tree_move(Tree* tree, const char* source, const char* target)
@@ -311,6 +313,7 @@ int tree_move(Tree* tree, const char* source, const char* target)
   Tree* target_dir;
   char target_dir_name[MAX_DIR_NAME_LEN + 1];
   int err = 0;
+  HashMap* tmp;
 
   if (!is_path_valid(source) || !is_path_valid(target))
     return EINVAL;
@@ -333,22 +336,16 @@ int tree_move(Tree* tree, const char* source, const char* target)
   free(source_parent_path);
   free(target_parent_path);
 
-  if (!lca || !source_parent || !target_parent) {
-    printf("nie ma chuja\n");
+  if (!lca || !source_parent || !target_parent)
     ERROR(ENOENT);
-  }
 
   source_dir = hmap_get(source_parent->subdirs, source_dir_name);
 
-  if (!source_dir) {
-    printf("nie istnieje gosc z nazwa %s\n", source_dir_name);
+  if (!source_dir)
     ERROR(ENOENT);
-  }
 
-  if (hmap_get(target_parent->subdirs, target_dir_name)) {
-    printf("juz istnieje gosc z nazwa %s\n", target_dir_name);
+  if (hmap_get(target_parent->subdirs, target_dir_name))
     ERROR(EEXIST);
-  }
 
   /* remove ourselves from one map and add to another */
   hmap_remove(source_parent->subdirs, source_dir_name);
@@ -360,12 +357,11 @@ int tree_move(Tree* tree, const char* source, const char* target)
   hmap_insert(target_parent->subdirs, target_dir->dir_name, target_dir);
 
   /* move the contents now and get rid of the old dir */
-  HashMap* tmp = target_dir->subdirs;
+  tmp = target_dir->subdirs;
   target_dir->subdirs = source_dir->subdirs;
   source_dir->subdirs = tmp;
   tree_free(source_dir);
 
-  /* Centralised exit -- it is the same whether there was an error or not. */
 exiting:
   writer_exit(&source_parent->monit);
   writer_exit(&target_parent->monit);

@@ -12,7 +12,7 @@ typedef struct Tree Tree;
 /** Create a new heap-allocated tree. */
 Tree* tree_new();
 
-/** Free a tree's memory. */
+/** Free all of the memory stored by a tree. */
 void tree_free(Tree*);
 
 /** Return a comma separated list with all the subdirectories under a path. */
