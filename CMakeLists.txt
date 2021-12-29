@@ -7,7 +7,7 @@ set(CMAKE_C_FLAGS "-g -Wall -Wextra -Wno-sign-compare")
 
 add_library(err err.c)
 add_library(HashMap HashMap.c)
-add_library(Tree Tree.c path_utils.c)
+add_library(Tree Tree.c path_utils.c rw.c)
 add_executable(main main.c)
 target_link_libraries(main Tree HashMap err pthread)
 

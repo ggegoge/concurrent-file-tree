@@ -16,6 +16,7 @@
 
 #include "HashMap.h"
 #include "path_utils.h"
+#include "rw.h"
 #include "Tree.h"
 
 /* TODO: the three fnctions
@@ -37,21 +38,6 @@
 /** This is the root directory name. */
 #define ROOT_PATH "/"
 
-/** Using this structure to store all of a tree's synchronisation variables. */
-typedef struct Monitor {
-  /* TODO: move this struct as well as the functions that operate on it into
-   * a separate rw module. Then store the Monitor on the heap? or perhaps no */
-  pthread_mutex_t mutex;
-  pthread_cond_t readers;
-  pthread_cond_t writers;
-  size_t rwait;
-  size_t wwait;
-  size_t rcount;
-  size_t wcount;
-  /* id of the current writer! */
-  pthread_t wid;
-} Monitor;
-
 /**
  * This is a recursive data structure representing a directory tree.
  * One mutex and two conditionals per node. We will do this the following way:
@@ -61,37 +47,10 @@ typedef struct Monitor {
  * descendants until those take place.
  */
 struct Tree {
-  struct Monitor monit;
+  Monitor monit;
   char* dir_name;
   HashMap* subdirs;
 };
-
-int monit_init(Monitor* mon)
-{
-  int err;
-
-  /* consciously using "||" operator's laziness */
-  if ((err = pthread_mutex_init(&mon->mutex, 0)) ||
-      (err = pthread_cond_init(&mon->readers, 0)) ||
-      (err = pthread_cond_init(&mon->writers, 0)))
-    return err;
-
-  mon->rwait = mon->wwait = mon->wcount = mon->rcount = mon->wid = 0;
-  return 0;
-}
-
-int monit_destroy(Monitor* mon)
-{
-  int err;
-
-  if ((err = pthread_mutex_destroy(&mon->mutex)) ||
-      (err = pthread_cond_destroy(&mon->readers)) ||
-      (err = pthread_cond_destroy(&mon->writers)))
-    return err;
-
-  mon->rwait = mon->wwait = mon->wcount = mon->rcount = 0;
-  return 0;
-}
 
 /**
  * A helper function for creating a heap allocated new empty directory with
@@ -170,131 +129,11 @@ Tree* access_dir(Tree* root, const char* path, int entry_fn(Monitor*, bool),
   return root;
 }
 
-/* Entry and exit protocoles in both reading and writing flavours (reminder: we
- * treat a writer on an ancestoral node to its target as a reader!).
- *
- * Then those will be used neatly for the directory accessing function. */
-
-int writer_entry(Monitor* mon)
-{
-  int err;
-
-  if (!mon)
-    return 0;
-
-  err = pthread_mutex_lock(&mon->mutex);
-
-  /* If I'm a writer here then I can write along as I am a sequential being
-   * apart from that i wait if there are some others working */
-  if (!(mon->wcount > 0 && mon->wid == pthread_self()) &&
-      (mon->rwait > 0 || mon->rcount > 0 || mon->wcount > 0 || mon->wwait > 0)) {
-    printf("writer %lu goes to sleep cause rw=%lu rc=%lu wc=%lu\n",
-           pthread_self(), mon->rwait, mon->rcount, mon->wcount);
-    ++mon->wwait;
-    err = pthread_cond_wait(&mon->writers, &mon->mutex);
-    printf("writer %lu woke up and rw=%lu rc=%lu wc=%lu\n",
-           pthread_self(), mon->rwait, mon->rcount, mon->wcount);
-    --mon->wwait;
-  }
-
-  ++mon->wcount;
-  mon->wid = pthread_self();
-  printf("\twentr %lu: ++wcount\n", pthread_self());
-  assert(mon->wcount > 0 || mon->wid == pthread_self());
-  assert(mon->rcount == 0);
-  err = pthread_mutex_unlock(&mon->mutex);
-
-  return err;
-}
-
-int writer_exit(Monitor* mon)
-{
-  int err;
-
-  if (!mon)
-    return 0;
-
-  err = pthread_mutex_lock(&mon->mutex);
-  assert(mon->wcount > 0 || mon->wid == pthread_self());
-  --mon->wcount;
-
-  if (mon->wcount == 0)
-    mon->wid = 0;
-
-  printf("\twexit %lu: --wcount\n", pthread_self());
-
-  if (mon->wcount == 0 && mon->rcount == 0 && mon->rwait > 0) {
-    printf("writer %lu is waking up a reader\n", pthread_self());
-    err = pthread_cond_broadcast(&mon->readers);
-  } else if (mon->wcount == 0 && mon->rcount == 0 && mon->wwait > 0) {
-    printf("writer %lu is waking up a writer\n", pthread_self());
-    err = pthread_cond_signal(&mon->writers);
-  }
-
-  err = pthread_mutex_unlock(&mon->mutex);
-
-  return err;
-}
-
-
-int reader_entry(Monitor* mon)
-{
-  int err;
-
-  if (!mon)
-    return 0;
-
-  err = pthread_mutex_lock(&mon->mutex);
-
-  /* I wait if either im not the current owner of this or if i have other more
-   * classical reasons like waiting for others to finish their business */
-  if (!(mon->wcount > 0 && mon->wid == pthread_self()) &&
-      (mon->wwait > 0 || mon->wcount > 0)) {
-    printf("reader %lu goes to sleep cause ww=%lu wc=%lu\n",
-           pthread_self(), mon->wwait, mon->wcount);
-    ++mon->rwait;
-    err = pthread_cond_wait(&mon->readers, &mon->mutex);
-    printf("reader %lu woke up and ww=%lu wc=%lu\n",
-           pthread_self(), mon->wwait, mon->wcount);
-    --mon->rwait;
-  }
-
-  assert(mon->wcount == 0 || mon->wid == pthread_self());
-  printf("\trentr %lu: ++rcount\n", pthread_self());
-  ++mon->rcount;
-  err = pthread_mutex_unlock(&mon->mutex);
-
-  return err;
-}
-int reader_exit(Monitor* mon)
-{
-  int err;
-
-  if (!mon)
-    return 0;
-
-  err = pthread_mutex_lock(&mon->mutex);
-  printf("\trexit %lu: --rcount\n", pthread_self());
-  --mon->rcount;
-  assert(mon->wcount == 0 || mon->wid == pthread_self());
-
-  if (mon->wcount == 0 && mon->rcount == 0 && mon->wwait > 0) {
-    printf("reader %lu is waking up a writer\n", pthread_self());
-    err = pthread_cond_signal(&mon->writers);
-  } else if (mon->wcount == 0 && mon->rcount == 0) {
-    printf("reader %lu is waking up a reader\n", pthread_self());
-    err = pthread_cond_broadcast(&mon->readers);
-  }
-
-  err = pthread_mutex_unlock(&mon->mutex);
-
-  return err;
-}
-
 /**
  * This is how the editing thread will enter directories. Depending on whether
  * this is their destination dir (`islast`) they will either be treated as a
- * writer or as a reader.
+ * writer or as a reader. Meaning that we treat an editing operation on an
+ * ancestoral directory as a reader and it's a writer only on the last one.
  *
  * Note: this function has a signature appropriate for the `entry_fn` argument
  * in `access_dir`.
