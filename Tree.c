@@ -43,21 +43,32 @@ struct Tree {
   HashMap* subdirs;
 };
 
+pthread_mutex_t malloc_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 /**
  * A helper function for creating a heap allocated new empty directory with
  * a given name. Copies the dname string.
  */
 static Tree* new_dir(const char* dname)
 {
+  int e = 0;
+  e = pthread_mutex_lock(&malloc_mutex);
+  
+  if (e)
+    return NULL;
+  
   Tree* tree = malloc(sizeof(Tree));
 
-  if (!tree)
+  if (!tree) {
+    e = pthread_mutex_unlock(&malloc_mutex);
     return NULL;
+  }
 
   tree->dir_name = strdup(dname);
 
   if (!tree->dir_name) {
     free(tree);
+    e = pthread_mutex_unlock(&malloc_mutex);
     return NULL;
   }
 
@@ -66,6 +77,7 @@ static Tree* new_dir(const char* dname)
   if (!tree->subdirs) {
     free(tree->dir_name);
     free(tree);
+    e = pthread_mutex_unlock(&malloc_mutex);
     return NULL;
   }
 
@@ -73,9 +85,11 @@ static Tree* new_dir(const char* dname)
     free(tree->dir_name);
     hmap_free(tree->subdirs);
     free(tree);
+    e = pthread_mutex_unlock(&malloc_mutex);
     return NULL;
   }
 
+  e = pthread_mutex_unlock(&malloc_mutex);
   return tree;
 }
 
