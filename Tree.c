@@ -59,18 +59,30 @@ struct Tree {
 static Tree* new_dir(const char* dname)
 {
   Tree* tree = malloc(sizeof(Tree));
-  char* name = strdup(dname);
-
-  /* TODO: when fails we shoyld free the allocated ones
-   * so more ifology after each malloc */
-  if (!tree || !name)
+  if (!tree)
     return NULL;
-
-  tree->dir_name = name;
+  
+  tree->dir_name = strdup(dname);
+  
+  if (!tree->dir_name) {
+    free(tree);
+    return NULL;
+  }
+  
   tree->subdirs = hmap_new();
-
-  if (monit_init(&tree->monit))
+  
+  if (!tree->subdirs) {
+    free(tree->dir_name);
+    free(tree);
     return NULL;
+  }
+  
+  if (monit_init(&tree->monit)) {
+    free(tree->dir_name);
+    hmap_free(tree->subdirs);
+    free(tree);
+    return NULL;
+  }
 
   return tree;
 }
@@ -186,12 +198,12 @@ char* tree_list(Tree* tree, const char* path)
   char* contents;
 
   if (!is_path_valid(path))
-    return 0;
+    return NULL;
 
   dir = access_dir(tree, path, list_entry, reader_exit);
 
   if (!dir)
-    return 0;
+    return NULL;
 
   contents = make_map_contents_string(dir->subdirs);
   printf("\tlist: reader exiting\n");
@@ -207,6 +219,7 @@ int tree_create(Tree* tree, const char* path)
   Tree* subdir;
   char* parent_path;
   char last_component[MAX_FOLDER_NAME_LENGTH + 1];
+  int err = 0;
 
   if (!is_path_valid(path))
     return EINVAL;
@@ -225,23 +238,23 @@ int tree_create(Tree* tree, const char* path)
     return ENOENT;
 
   /* The subdir we want to create already exists. */
-  if (hmap_get(parent->subdirs, last_component)) {
-    writer_exit(&parent->monit);
-    return EEXIST;
+  if (hmap_get(parent->subdirs, last_component))
+    err =  EEXIST;
+
+  if (!err) {
+    subdir = new_dir(last_component);
+
+    if (!subdir)
+      err = ENOMEM;
   }
 
-  subdir = new_dir(last_component);
+  /* Add the newly created subdirectory as a parent's child */  
+  if (!err)
+    hmap_insert(parent->subdirs, subdir->dir_name, subdir);
 
-  if (!subdir) {
-    writer_exit(&parent->monit);
-    return ENOMEM;
-  }
-
-  /* Add the newly created subdirectory as a parent's child */
-  hmap_insert(parent->subdirs, subdir->dir_name, subdir);
   writer_exit(&parent->monit);
 
-  return 0;
+  return err;
 }
 
 int tree_remove(Tree* tree, const char* path)
@@ -251,6 +264,7 @@ int tree_remove(Tree* tree, const char* path)
   Tree* subdir;
   char* parent_path;
   char last_component[MAX_FOLDER_NAME_LENGTH + 1];
+  int err = 0;
 
   if (!is_path_valid(path))
     return EINVAL;
@@ -258,32 +272,31 @@ int tree_remove(Tree* tree, const char* path)
     return EBUSY;
 
   parent_path = make_path_to_parent(path, last_component);
-  parent = find_dir(tree, parent_path);
   parent = access_dir(tree, parent_path, edit_entry, reader_exit);
   free(parent_path);
 
   if (!parent) {
-    writer_exit(&parent->monit);
-    return ENOENT;
+    err = ENOENT;
   }
 
-  subdir = hmap_get(parent->subdirs, last_component);
+  if (!err) {
+    subdir = hmap_get(parent->subdirs, last_component);
 
-  if (!subdir) {
-    writer_exit(&parent->monit);
-    return ENOENT;
+    if (!subdir)
+      err = ENOENT;
   }
 
-  if (hmap_size(subdir->subdirs) > 0) {
-    writer_exit(&parent->monit);
-    return ENOTEMPTY;
+  if (!err && hmap_size(subdir->subdirs) > 0)
+    err = ENOTEMPTY;
+
+  if (!err) {
+    hmap_remove(parent->subdirs, last_component);
+    tree_free(subdir);
   }
 
-  hmap_remove(parent->subdirs, last_component);
-  tree_free(subdir);
   writer_exit(&parent->monit);
 
-  return 0;
+  return err;
 }
 
 /* If we think about it then this bears some resemblence to the classic hungry
@@ -308,6 +321,7 @@ int tree_move(Tree* tree, const char* source, const char* target)
   char* target_parent_path;
   Tree* target_dir;
   char target_dir_name[MAX_FOLDER_NAME_LENGTH + 1];
+  int err = 0;
 
   if (!is_path_valid(source) || !is_path_valid(target))
     return EINVAL;
@@ -339,54 +353,46 @@ int tree_move(Tree* tree, const char* source, const char* target)
 
   if (!lca || !source_parent || !target_parent) {
     printf("nie ma chuja\n");
-    writer_exit(&source_parent->monit);
-    writer_exit(&target_parent->monit);
-    writer_exit(&lca->monit);
-    return ENOENT;
+    err = ENOENT;
   }
 
-  source_dir = hmap_get(source_parent->subdirs, source_dir_name);
+  if (!err)
+    source_dir = hmap_get(source_parent->subdirs, source_dir_name);
 
-  if (!source_dir) {
+  if (!err && !source_dir) {
     printf("nie istnieje gosc z nazwa %s\n", source_dir_name);
-    writer_exit(&source_parent->monit);
-    writer_exit(&target_parent->monit);
-    writer_exit(&lca->monit);
-    return ENOENT;
+    err = ENOENT;
   }
 
-  if (hmap_get(target_parent->subdirs, target_dir_name)) {
+  if (!err && hmap_get(target_parent->subdirs, target_dir_name)) {
     printf("nie istnieje gosc z nazwa %s\n", target_dir_name);
-    writer_exit(&source_parent->monit);
-    writer_exit(&target_parent->monit);
-    writer_exit(&lca->monit);
-    return EEXIST;
+    err = EEXIST;
   }
 
   /* remove ourselves from one map and add to another */
-  hmap_remove(source_parent->subdirs, source_dir_name);
-  target_dir = new_dir(target_dir_name);
+  if (!err) {
+    hmap_remove(source_parent->subdirs, source_dir_name);
+    target_dir = new_dir(target_dir_name);
 
-  if (!target_dir) {
-    writer_exit(&source_parent->monit);
-    writer_exit(&target_parent->monit);
-    writer_exit(&lca->monit);
-    return ENOMEM;
+    if (!target_dir)
+      err = ENOMEM;
   }
 
-  hmap_insert(target_parent->subdirs, target_dir->dir_name, target_dir);
-
-  /* move the contents now and get rid of the old dir */
-  HashMap* tmp = target_dir->subdirs;
-  target_dir->subdirs = source_dir->subdirs;
-  source_dir->subdirs = tmp;
-  tree_free(source_dir);
+  if (!err) {
+    hmap_insert(target_parent->subdirs, target_dir->dir_name, target_dir);
+    
+    /* move the contents now and get rid of the old dir */
+    HashMap* tmp = target_dir->subdirs;
+    target_dir->subdirs = source_dir->subdirs;
+    source_dir->subdirs = tmp;
+    tree_free(source_dir);
+  }
 
   writer_exit(&source_parent->monit);
   writer_exit(&target_parent->monit);
   writer_exit(&lca->monit);
 
-  return 0;
+  return err;
 }
 
 /* list all contents recursively */
