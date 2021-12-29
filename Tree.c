@@ -59,24 +59,25 @@ struct Tree {
 static Tree* new_dir(const char* dname)
 {
   Tree* tree = malloc(sizeof(Tree));
+
   if (!tree)
     return NULL;
-  
+
   tree->dir_name = strdup(dname);
-  
+
   if (!tree->dir_name) {
     free(tree);
     return NULL;
   }
-  
+
   tree->subdirs = hmap_new();
-  
+
   if (!tree->subdirs) {
     free(tree->dir_name);
     free(tree);
     return NULL;
   }
-  
+
   if (monit_init(&tree->monit)) {
     free(tree->dir_name);
     hmap_free(tree->subdirs);
@@ -238,22 +239,23 @@ int tree_create(Tree* tree, const char* path)
     return ENOENT;
 
   /* The subdir we want to create already exists. */
-  if (hmap_get(parent->subdirs, last_component))
+  if (hmap_get(parent->subdirs, last_component)) {
     err =  EEXIST;
-
-  if (!err) {
-    subdir = new_dir(last_component);
-
-    if (!subdir)
-      err = ENOMEM;
+    goto exiting;
   }
 
-  /* Add the newly created subdirectory as a parent's child */  
-  if (!err)
-    hmap_insert(parent->subdirs, subdir->dir_name, subdir);
+  subdir = new_dir(last_component);
 
+  if (!subdir) {
+    err = ENOMEM;
+    goto exiting;
+  }
+
+  /* Add the newly created subdirectory as a parent's child */
+  hmap_insert(parent->subdirs, subdir->dir_name, subdir);
+
+exiting:
   writer_exit(&parent->monit);
-
   return err;
 }
 
@@ -277,25 +279,26 @@ int tree_remove(Tree* tree, const char* path)
 
   if (!parent) {
     err = ENOENT;
+    goto exiting;
   }
 
-  if (!err) {
-    subdir = hmap_get(parent->subdirs, last_component);
+  subdir = hmap_get(parent->subdirs, last_component);
 
-    if (!subdir)
-      err = ENOENT;
+  if (!subdir) {
+    err = ENOENT;
+    goto exiting;
   }
 
-  if (!err && hmap_size(subdir->subdirs) > 0)
+  if (hmap_size(subdir->subdirs) > 0) {
     err = ENOTEMPTY;
-
-  if (!err) {
-    hmap_remove(parent->subdirs, last_component);
-    tree_free(subdir);
+    goto exiting;
   }
 
-  writer_exit(&parent->monit);
+  hmap_remove(parent->subdirs, last_component);
+  tree_free(subdir);
 
+exiting:
+  writer_exit(&parent->monit);
   return err;
 }
 
@@ -354,44 +357,45 @@ int tree_move(Tree* tree, const char* source, const char* target)
   if (!lca || !source_parent || !target_parent) {
     printf("nie ma chuja\n");
     err = ENOENT;
+    goto exiting;
   }
 
-  if (!err)
-    source_dir = hmap_get(source_parent->subdirs, source_dir_name);
+  source_dir = hmap_get(source_parent->subdirs, source_dir_name);
 
-  if (!err && !source_dir) {
+  if (!source_dir) {
     printf("nie istnieje gosc z nazwa %s\n", source_dir_name);
     err = ENOENT;
+    goto exiting;
   }
 
-  if (!err && hmap_get(target_parent->subdirs, target_dir_name)) {
+  if (hmap_get(target_parent->subdirs, target_dir_name)) {
     printf("nie istnieje gosc z nazwa %s\n", target_dir_name);
     err = EEXIST;
+    goto exiting;
   }
 
   /* remove ourselves from one map and add to another */
-  if (!err) {
-    hmap_remove(source_parent->subdirs, source_dir_name);
-    target_dir = new_dir(target_dir_name);
+  hmap_remove(source_parent->subdirs, source_dir_name);
+  target_dir = new_dir(target_dir_name);
 
-    if (!target_dir)
-      err = ENOMEM;
+  if (!target_dir) {
+    err = ENOMEM;
+    goto exiting;
   }
 
-  if (!err) {
-    hmap_insert(target_parent->subdirs, target_dir->dir_name, target_dir);
-    
-    /* move the contents now and get rid of the old dir */
-    HashMap* tmp = target_dir->subdirs;
-    target_dir->subdirs = source_dir->subdirs;
-    source_dir->subdirs = tmp;
-    tree_free(source_dir);
-  }
+  hmap_insert(target_parent->subdirs, target_dir->dir_name, target_dir);
 
+  /* move the contents now and get rid of the old dir */
+  HashMap* tmp = target_dir->subdirs;
+  target_dir->subdirs = source_dir->subdirs;
+  source_dir->subdirs = tmp;
+  tree_free(source_dir);
+
+  /* Centralised exit -- it is the same whether there was an error or not. */
+exiting:
   writer_exit(&source_parent->monit);
   writer_exit(&target_parent->monit);
   writer_exit(&lca->monit);
-
   return err;
 }
 
