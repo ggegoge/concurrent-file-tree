@@ -287,15 +287,22 @@ exiting:
 static void double_access(const char* p1, const char* p2, Tree* tree,
                           Tree** lca, Tree** t1, Tree** t2)
 {
-  char* lca_path = path_lca(p1, p2);
-  printf("common_path = %s\n", lca_path);
+  const char* p1lca;
+  const char* p2lca;
+  /* char* lca_path = path_lca(p1, p2); */
+  char* lca_path = path_lca_move(p1, p2, &p1lca, &p2lca);
+  printf("common_path = %s, restings=%s and %s\n", lca_path, p1lca, p2lca);
 
   *lca = access_dir(tree, lca_path, edit_entry, reader_exit);
+  printf("%lu: got the lca ie %s!\n", pthread_self(), lca_path);
   /* Having locked the lca I am free to take the other two. */
-  *t1 = access_dir(tree, p1, edit_entry, reader_exit);
-  printf("%lu: got the source parent!\n", pthread_self());
-  *t2 = access_dir(tree, p2, edit_entry, reader_exit);
-  printf("%lu got the target parent!\n", pthread_self());
+  /* TODO search for p1 and p2 should be done from below LCA! */
+  printf("%lu tring to acquire source par ie %s\n", pthread_self(), p1);
+  *t1 = access_dir(*lca, p1lca, edit_entry, reader_exit);
+  printf("%lu: got the source parent ie %s!\n", pthread_self(), p1);
+  printf("%lu tring to acquire targt par ie %s\n", pthread_self(), p2);
+  *t2 = access_dir(*lca, p2lca, edit_entry, reader_exit);
+  printf("%lu got the target parent ie %s!\n", pthread_self(), p2);
 
   free(lca_path);
 }

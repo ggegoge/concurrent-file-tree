@@ -76,4 +76,14 @@ bool is_subpath(const char* path1, const char* path2);
  */
 char* path_lca(const char* path1, const char* path2);
 
+/**
+ * Find the lowest common ancestor of two paths. Will save path to the lca under
+ * `lca`, assumes it is big enough and that `p1` and `p2` are both valid. It
+ * also will have `p1lca` and `p2lca` pointing at the parts after the lca.
+ *
+ * The result should be freed by the caller.
+ */
+char* path_lca_move(const char* p1, const char* p2,
+                    const char** p1lca, const char** p2lca);
+
 #endif  /* _PATH_UTILS_H_ */

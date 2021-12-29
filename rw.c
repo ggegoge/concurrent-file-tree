@@ -155,8 +155,8 @@ int reader_exit(Monitor* mon)
   --mon->rcount;
   assert(mon->wcount == 0 || mon->wid == pthread_self());
 
-  if (mon->wcount == 0 && mon->rcount == 0 && mon->wwait > 0) {
-    printf("reader %lu is waking up a writer\n", pthread_self());
+  /* last thing: dont wake up others if there's more of you to come i guess */
+  if (mon->wcount == 0 && mon->rcount == 0 && mon->wwait > 0 && mon->rwoken == 0) {
     printf("reader %lu is waking up a writer cause wc=%lu rc=%lu ww=%lu\n",
            pthread_self(), mon->wcount, mon->rcount, mon->wwait);
     mon->wwoken = 1;

@@ -118,6 +118,7 @@ char* make_map_contents_string(HashMap* map)
 
   // Return empty string if map is empty.
   if (!result_size) {
+    free(keys);
     // Note we can't just return "", as it can't be free'd.
     char* result = malloc(1);
     *result = '\0';
@@ -175,4 +176,19 @@ char* path_lca(const char* path1, const char* path2)
     ;
 
   return strndup(path1, i);
+}
+
+char* path_lca_move(const char* p1, const char* p2,
+                    const char** p1lca, const char** p2lca)
+{
+  size_t i;
+  size_t len1 = strlen(p1);
+  size_t len2 = strlen(p2);
+  size_t max_len = len1 > len2 ? len1 : len2;
+  for (i = 0; i < max_len && p1[i] == p2[i]; ++i)
+    ;
+
+  *p1lca = p1 + i - 1;
+  *p2lca = p2 + i - 1;
+  return strndup(p2, i);
 }
