@@ -48,13 +48,9 @@ int writer_entry(Monitor* mon)
   syserr(err, "wentr, mutex lock");
   
   while (mon->rwait > 0 || mon->rcount > 0 || mon->wcount > 0 || mon->wwait > 0) {
-    printf("writer %lu goes to sleep cause rw=%lu rc=%lu wc=%lu\n",
-           pthread_self(), mon->rwait, mon->rcount, mon->wcount);
     ++mon->wwait;
     err = pthread_cond_wait(&mon->writers, &mon->mutex);
     syserr(err, "wentr, cond wait");
-    printf("writer %lu woke up and rw=%lu rc=%lu wc=%lu\n",
-           pthread_self(), mon->rwait, mon->rcount, mon->wcount);
     --mon->wwait;
 
     /* check if the wakeup was not spurious */
@@ -65,7 +61,6 @@ int writer_entry(Monitor* mon)
   }
 
   ++mon->wcount;
-  printf("\twentr %lu: ++wcount\n", pthread_self());
   assert(mon->wcount == 1);
   assert(mon->rcount == 0);
   err = pthread_mutex_unlock(&mon->mutex);
@@ -87,17 +82,11 @@ int writer_exit(Monitor* mon)
   assert(mon->wcount == 0);
   assert(mon->rcount == 0);
 
-  printf("\twexit %lu: --wcount\n", pthread_self());
-
   if (mon->wcount == 0 && mon->rcount == 0 && mon->rwait > 0) {
-    printf("writer %lu is waking up readers cause wc=%lu rc=%lu rw=%lu\n",
-           pthread_self(), mon->wcount, mon->rcount, mon->rwait);
     mon->rwoken = mon->rwait;
     err = pthread_cond_broadcast(&mon->readers);
     syserr(err, "wexit, cond broadcast");
   } else if (mon->wcount == 0 && mon->rcount == 0 && mon->wwait > 0) {
-    printf("writer %lu is waking up a writer cause wc=%lu rc=%lu ww=%lu\n",
-           pthread_self(), mon->wcount, mon->rcount, mon->wwait);
     mon->wwoken = 1;
     err = pthread_cond_signal(&mon->writers);
     syserr(err, "wexit, cond signal");
@@ -119,13 +108,9 @@ int reader_entry(Monitor* mon)
   syserr(err, "rentr, mutex lock");
 
   while (mon->wwait > 0 || mon->wcount > 0) {
-    printf("reader %lu goes to sleep cause ww=%lu wc=%lu\n",
-           pthread_self(), mon->wwait, mon->wcount);
     ++mon->rwait;
     err = pthread_cond_wait(&mon->readers, &mon->mutex);
     syserr(err, "rentr, cond wait");
-    printf("reader %lu woke up and ww=%lu wc=%lu\n",
-           pthread_self(), mon->wwait, mon->wcount);
     --mon->rwait;
 
     /* check if the wakeup was not spurious */
@@ -135,7 +120,6 @@ int reader_entry(Monitor* mon)
     }
   }
 
-  printf("\trentr %lu: ++rcount\n", pthread_self());  
   assert(mon->wcount == 0);
   ++mon->rcount;
   err = pthread_mutex_unlock(&mon->mutex);
@@ -154,7 +138,6 @@ int reader_exit(Monitor* mon)
   err = pthread_mutex_lock(&mon->mutex);
   syserr(err, "rexit, mutex lock");
   
-  printf("\trexit %lu: --rcount\n", pthread_self());
   --mon->rcount;
   assert(mon->wcount == 0);
 
@@ -163,14 +146,10 @@ int reader_exit(Monitor* mon)
    * to wake up a writer even though there are still readers to come!  therefore
    * check rwoken to see if a reader awakening isn't taking place */
   if (mon->wcount == 0 && mon->rcount == 0 && mon->wwait > 0 && mon->rwoken == 0) {
-    printf("reader %lu is waking up a writer cause wc=%lu rc=%lu ww=%lu\n",
-           pthread_self(), mon->wcount, mon->rcount, mon->wwait);
     mon->wwoken = 1;
     err = pthread_cond_signal(&mon->writers);
     syserr(err, "rexit, cond signal");
   } else if (mon->wcount == 0 && mon->rcount == 0) {
-    printf("reader %lu is waking up readers cause wc=%lu, rc=%lu rw=%lu\n",
-           pthread_self(), mon->wcount, mon->rcount, mon->rwait);
     mon->rwoken = mon->rwait;
     err = pthread_cond_broadcast(&mon->readers);
     syserr(err, "rexit, cond broadcast");
