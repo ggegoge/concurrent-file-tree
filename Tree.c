@@ -14,6 +14,7 @@
 #include <assert.h>
 #include <stdio.h>
 
+#include "err.h"
 #include "HashMap.h"
 #include "path_utils.h"
 #include "rw.h"
@@ -81,50 +82,64 @@ static Tree* new_dir(const char* dname)
 
 /**
  * Find a directory under a `path` and lock it and the path leading to it.
- * 
+ * Saves the result under `dest`, returns some errno.
+ *
+ * If an error occured or the directory under `path` does not exist then `*dest`
+ * will be set to `NULL`.
+ *
  * The `entry_fn` function will be used to access each of the passed by dirs'
- * monitors. It returns an exit code and its parameters are the monitor in
- * question and a boolean flag telling whether it is visiting the target monitor
- * or one on the way.
+ * monitors. It returns an error code and its parameters are the monitor in
+ * question and a boolean flag telling it whether it is visiting the target
+ * monitor or one on the way.
  *
  * The `passedby` array will be filled with all monitors that were entered in
- * the process (apart from the target one! It will be in the returned tree).
- * Its size will be stored under `passed_count`. Exiting them should be done by
- * the caller accordingly with how they've chosen to enter them.
+ * the process (apart from the destination one! It will be in the returned
+ * tree).  Its size will be stored under `passed_count`. Exiting them should be
+ * done by the caller accordingly with how they've chosen to enter them.
  */
-static Tree* access_dir(Tree* root, const char* target,
-                        int entry_fn(Monitor*, bool),
-                        Monitor* passedby[], size_t* passed_count)
+static int access_dir(Tree* root, const char* target, Tree** dest,
+                      int entry_fn(Monitor*, bool),
+                      Monitor* passedby[], size_t* passed_count)
 {
   char component[MAX_DIR_NAME_LEN + 1];
   const char* subpath = target;
   Tree* next;
+  int err;
 
   *passed_count = 0;
+  *dest = root;
 
   while ((subpath = split_path(subpath, component))) {
-    if (!root)
+    if (!*dest)
       break;
 
-    entry_fn(&root->monit, false);
-    passedby[(*passed_count)++] = &root->monit;
-    next = hmap_get(root->subdirs, component);
-    root = next;
+    err = entry_fn(&(*dest)->monit, false);
+
+    if (err) {
+      *dest = NULL;
+      return err;
+    }
+
+    passedby[(*passed_count)++] = &(*dest)->monit;
+    next = hmap_get((*dest)->subdirs, component);
+    *dest = next;
   }
 
-  if (root)
-    entry_fn(&root->monit, true);
+  if (*dest)
+    entry_fn(&(*dest)->monit, true);
 
-  return root;
+  return 0;
 }
 
 /** Exit monitors according to a given policy. */
-static int exit_monitors(Monitor* mons[], size_t count, int exit_fn(Monitor*))
+static void exit_monitors(Monitor* mons[], size_t count, int exit_fn(Monitor*))
 {
-  for (; count --> 0; )
-    exit_fn(mons[count]);
+  int err;
 
-  return 0;
+  for (; count --> 0; ) {
+    err = exit_fn(mons[count]);
+    syserr(err, "Failed to exit %lu'th  monitor", count);
+  }
 }
 
 /**
@@ -197,13 +212,14 @@ char* tree_list(Tree* tree, const char* path)
   char* contents;
   Monitor* passedby[MAX_PATH_LEN / 2];
   size_t passed_count;
+  int err;
 
   if (!is_path_valid(path))
     return NULL;
 
-  dir = access_dir(tree, path, list_entry, passedby, &passed_count);
+  err = access_dir(tree, path, &dir, list_entry, passedby, &passed_count);
 
-  if (!dir) {
+  if (err || !dir) {
     exit_monitors(passedby, passed_count, reader_exit);
     return NULL;
   }
@@ -235,8 +251,12 @@ int tree_create(Tree* tree, const char* path)
   if (!parent_path)
     return EEXIST;
 
-  parent = access_dir(tree, parent_path, edit_entry, passedby, &passed_count);
+  err = access_dir(tree, parent_path, &parent, edit_entry,
+                   passedby, &passed_count);
   free(parent_path);
+
+  if (err)
+    ERROR(err);
 
   /* The parent does not exist. */
   if (!parent)
@@ -278,8 +298,12 @@ int tree_remove(Tree* tree, const char* path)
     return EBUSY;
 
   parent_path = make_path_to_parent(path, last_component);
-  parent = access_dir(tree, parent_path, edit_entry, passedby, &passed_count);
+  err = access_dir(tree, parent_path, &parent, edit_entry,
+                   passedby, &passed_count);
   free(parent_path);
+
+  if (err)
+    ERROR(err);
 
   if (!parent)
     ERROR(ENOENT);
@@ -317,23 +341,32 @@ exiting:
  * This function accesses both the contents under p1 and p2 and locks writerly
  * the lca dir and readlocks its ancestors (`edit_entry`). As in `access_dir`
  * functions the array `passedby` of size `passed_count` will store those locked
- * on the way.
+ * on the way. Returns an error code.
  */
-static void double_access(const char* p1, const char* p2, Tree* tree,
-                          Tree** lca, Tree** t1, Tree** t2,
-                          Monitor* passedby[], size_t* passed_count)
+static int double_access(const char* p1, const char* p2, Tree* tree,
+                         Tree** lca, Tree** t1, Tree** t2,
+                         Monitor* passedby[], size_t* passed_count)
 {
   const char* p1lca;
   const char* p2lca;
   Monitor* ignorepassed[MAX_PATH_LEN / 2];
   size_t ignored;
   char* lca_path = path_lca_move(p1, p2, &p1lca, &p2lca);
+  int err = 0;
 
-  *lca = access_dir(tree, lca_path, edit_entry, passedby, passed_count);
-  /* Having locked the lca I am free to take the other two without locks */
-  *t1 = access_dir(*lca, p1lca, chill_entry, ignorepassed, &ignored);
-  *t2 = access_dir(*lca, p2lca, chill_entry, ignorepassed, &ignored);
+  err = access_dir(tree, lca_path, lca, edit_entry, passedby, passed_count);
   free(lca_path);
+
+  if (err)
+    return err;
+
+  /* Having locked the lca I am free to take the other two without locks */
+  err = access_dir(*lca, p1lca, t1, chill_entry, ignorepassed, &ignored);
+  assert(!err);
+  err = access_dir(*lca, p2lca, t2, chill_entry, ignorepassed, &ignored);
+  assert(!err);
+
+  return 0;
 }
 
 int tree_move(Tree* tree, const char* source, const char* target)
@@ -368,11 +401,14 @@ int tree_move(Tree* tree, const char* source, const char* target)
     return EEXIST;
   }
 
-  double_access(source_parent_path, target_parent_path, tree,
-                &lca, &source_parent, &target_parent, passedby, &passed_count);
+  err = double_access(source_parent_path, target_parent_path, tree, &lca,
+                      &source_parent, &target_parent, passedby, &passed_count);
 
   free(source_parent_path);
   free(target_parent_path);
+
+  if (err)
+    ERROR(err);
 
   if (!lca || !source_parent || !target_parent)
     ERROR(ENOENT);

@@ -31,7 +31,8 @@ typedef struct Monitor {
 } Monitor;
 
 /* All functions return an error code that is 0 in case of success or some errno
- * value otherwise. Usually it's what pthread_* functions returned. */
+ * value otherwise. If an error permanently damaging the mechanism occured then
+ * the process terminates completely. */
 
 /** Initialise a monitor. */
 int monit_init(Monitor* mon);
