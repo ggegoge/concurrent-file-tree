@@ -9,7 +9,7 @@
 #include "path_utils.h"
 
 #define ITER 100
-#define N 10
+#define N 100
 
 void simple_tree_test()
 {
@@ -313,9 +313,9 @@ void test_lca()
 
 int main(void)
 {
-  /* simple_tree_test();
-   * errors_tree_test();
-   * move_test_async(); */
+  simple_tree_test();
+  errors_tree_test();
+  move_test_async();
   test2();
   test_lca();
   

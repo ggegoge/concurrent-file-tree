@@ -121,9 +121,10 @@ static Tree* access_dir(Tree* root, const char* path,
 
     printf("\tacess[%lu]: non final entry on %s\n", pthread_self(), root->dir_name);
     entry_fn(&root->monit, false);
+    printf("\t%lu: passedby[%lu] = %s\n", pthread_self(), *passed_count,
+           root->dir_name);
     passedby[(*passed_count)++] = &root->monit;
     next = hmap_get(root->subdirs, component);
-    printf("\tacess[%lu]: exit on %s\n", pthread_self(), root->dir_name);
     root = next;
   }
 
@@ -136,11 +137,14 @@ static Tree* access_dir(Tree* root, const char* path,
 }
 
 /** Exit monitors according to a given policy. */
-static int exit_monitors(Monitor* mons[], size_t count,
-                         int exit_fn(Monitor*))
+static int exit_monitors(Monitor* mons[], size_t count, int exit_fn(Monitor*))
 {
-  for (; count --> 0; )
+  printf("%lu: EXIT %lu MONITORS\n", pthread_self(), count);
+
+  for (; count -- > 0; ) {
+    printf("%lu exiting pasedby[%lu]\n", pthread_self(), count);
     exit_fn(mons[count]);
+  }
 
   return 0;
 }
@@ -222,14 +226,16 @@ char* tree_list(Tree* tree, const char* path)
 
   dir = access_dir(tree, path, list_entry, passedby, &passed_count);
 
-  if (!dir)
+  if (!dir) {
+    exit_monitors(passedby, passed_count, reader_exit);
     return NULL;
+  }
 
   contents = make_map_contents_string(dir->subdirs);
   printf("\tlist: reader exiting\n");
 
-  exit_monitors(passedby, passed_count, reader_exit);
   reader_exit(&dir->monit);
+  exit_monitors(passedby, passed_count, reader_exit);
 
   return contents;
 }
@@ -259,7 +265,7 @@ int tree_create(Tree* tree, const char* path)
 
   /* The parent does not exist. */
   if (!parent)
-    return ENOENT;
+    ERROR(ENOENT);
 
   /* The subdir we want to create already exists. */
   if (hmap_get(parent->subdirs, last_component))
@@ -274,8 +280,11 @@ int tree_create(Tree* tree, const char* path)
   hmap_insert(parent->subdirs, subdir->dir_name, subdir);
 
 exiting:
+
+  if (parent)
+    writer_exit(&parent->monit);
+
   exit_monitors(passedby, passed_count, reader_exit);
-  writer_exit(&parent->monit);
   return err;
 }
 
@@ -314,8 +323,11 @@ int tree_remove(Tree* tree, const char* path)
   tree_free(subdir);
 
 exiting:
+
+  if (parent)
+    writer_exit(&parent->monit);
+
   exit_monitors(passedby, passed_count, reader_exit);
-  writer_exit(&parent->monit);
   return err;
 }
 
@@ -350,7 +362,6 @@ static void double_access(const char* p1, const char* p2, Tree* tree,
   *lca = access_dir(tree, lca_path, edit_entry, passedby, passed_count);
   printf("%lu: got the lca ie %s!\n", pthread_self(), lca_path);
   /* Having locked the lca I am free to take the other two. */
-  /* TODO search for p1 and p2 should be done from below LCA! */
   printf("%lu tring to acquire source par ie %s\n", pthread_self(), p1);
   *t1 = access_dir(*lca, p1lca, chill_entry, ignorepassed, &ignored);
   printf("%lu: got the source parent ie %s!\n", pthread_self(), p1);
@@ -426,9 +437,12 @@ int tree_move(Tree* tree, const char* source, const char* target)
   tree_free(source_dir);
 
 exiting:
-  exit_monitors(passedby, passed_count, reader_exit);
+
   /* only exiting the lca as we didn't lock others (we chill_entered them) */
-  writer_exit(&lca->monit);
+  if (lca)
+    writer_exit(&lca->monit);
+
+  exit_monitors(passedby, passed_count, reader_exit);
   return err;
 }
 
