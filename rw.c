@@ -66,7 +66,7 @@ int writer_entry(Monitor* mon)
 
   ++mon->wcount;
   printf("\twentr %lu: ++wcount\n", pthread_self());
-  assert(mon->wcount > 0);
+  assert(mon->wcount == 1);
   assert(mon->rcount == 0);
   err = pthread_mutex_unlock(&mon->mutex);
   syserr(err, "wentr, mutex unlock");
@@ -83,8 +83,9 @@ int writer_exit(Monitor* mon)
 
   err = pthread_mutex_lock(&mon->mutex);
   syserr(err, "wexit, mutex lock");
-  assert(mon->wcount > 0);
   --mon->wcount;
+  assert(mon->wcount == 0);
+  assert(mon->rcount == 0);
 
   printf("\twexit %lu: --wcount\n", pthread_self());
 

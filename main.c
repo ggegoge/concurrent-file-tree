@@ -311,6 +311,15 @@ void test_lca()
   free(lca_path);
 }
 
+void dumb_fucking_edgecase()
+{
+  Tree* tr = tree_new();
+  int e1 = tree_move(tr, "/c/", "/c/");
+  int e2 = tree_create(tr, "/c/");
+  int e3 = tree_move(tr, "/c/", "/c/");
+  printf("errs: \"%s\", \"%s\", \"%s\"\n", strerror(e1), strerror(e2), strerror(e3));
+}
+
 int main(void)
 {
   simple_tree_test();
@@ -318,6 +327,7 @@ int main(void)
   move_test_async();
   test2();
   test_lca();
+  dumb_fucking_edgecase();
   
   return 0;
 }

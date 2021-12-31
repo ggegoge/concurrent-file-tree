@@ -393,6 +393,7 @@ int tree_move(Tree* tree, const char* source, const char* target)
     return EINVAL;
   else if (strcmp(source, ROOT_PATH) == 0)
     return EBUSY;
+  /* mv /a/b/ /a/b/c/ is stupid! */
   else if (is_subpath(source, target))
     return ESUBPATH;
 
