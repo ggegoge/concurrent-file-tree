@@ -53,10 +53,10 @@ static Tree* new_dir(const char* dname)
 {
   int e = 0;
   e = pthread_mutex_lock(&malloc_mutex);
-  
+
   if (e)
     return NULL;
-  
+
   Tree* tree = malloc(sizeof(Tree));
 
   if (!tree) {
@@ -100,15 +100,20 @@ static Tree* new_dir(const char* dname)
  * question and a boolean flag telling whether it is visiting the target monitor
  * or one on the way.
  *
- * The `exit_fn` function works similarily but it will only be called on non-final
- * directories. Exiting the target dir should be done by the caller.
+ * The `passedby` array will be filled with all of monitors that were entered
+ * in the process (apart from the last one!).
+ * Its size will be stored under `passed_count`. Exiting them should be done by
+ * the caller accordingly with how they've chosen to enter them.
  */
 static Tree* access_dir(Tree* root, const char* path,
-                        int entry_fn(Monitor*, bool), int exit_fn(Monitor*))
+                        int entry_fn(Monitor*, bool),
+                        Monitor* passedby[], size_t* passed_count)
 {
   char component[MAX_DIR_NAME_LEN + 1];
   const char* subpath = path;
   Tree* next;
+
+  *passed_count = 0;
 
   while ((subpath = split_path(subpath, component))) {
     if (!root)
@@ -116,9 +121,9 @@ static Tree* access_dir(Tree* root, const char* path,
 
     printf("\tacess[%lu]: non final entry on %s\n", pthread_self(), root->dir_name);
     entry_fn(&root->monit, false);
+    passedby[(*passed_count)++] = &root->monit;
     next = hmap_get(root->subdirs, component);
     printf("\tacess[%lu]: exit on %s\n", pthread_self(), root->dir_name);
-    exit_fn(&root->monit);
     root = next;
   }
 
@@ -128,6 +133,16 @@ static Tree* access_dir(Tree* root, const char* path,
   }
 
   return root;
+}
+
+/** Exit monitors according to a given policy. */
+static int exit_monitors(Monitor* mons[], size_t count,
+                         int exit_fn(Monitor*))
+{
+  for (; count --> 0; )
+    exit_fn(mons[count]);
+
+  return 0;
 }
 
 /**
@@ -155,6 +170,17 @@ static int list_entry(Monitor* mon, bool islast)
 {
   (void)islast;
   return reader_entry(mon);
+}
+
+/**
+ * For using the `access_dir` without any protection. This function is a no-op
+ * satisfying the `entry_fn` signature.
+ */
+static int chill_entry(Monitor* mon, bool islast)
+{
+  (void)mon;
+  (void)(islast);
+  return 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -188,17 +214,21 @@ char* tree_list(Tree* tree, const char* path)
   printf("ls %s     | %lu\n", path, pthread_self());
   Tree* dir;
   char* contents;
+  Monitor* passedby[MAX_PATH_LEN / 2];
+  size_t passed_count;
 
   if (!is_path_valid(path))
     return NULL;
 
-  dir = access_dir(tree, path, list_entry, reader_exit);
+  dir = access_dir(tree, path, list_entry, passedby, &passed_count);
 
   if (!dir)
     return NULL;
 
   contents = make_map_contents_string(dir->subdirs);
   printf("\tlist: reader exiting\n");
+
+  exit_monitors(passedby, passed_count, reader_exit);
   reader_exit(&dir->monit);
 
   return contents;
@@ -212,6 +242,8 @@ int tree_create(Tree* tree, const char* path)
   char* parent_path;
   char last_component[MAX_DIR_NAME_LEN + 1];
   int err = 0;
+  Monitor* passedby[MAX_PATH_LEN / 2];
+  size_t passed_count;
 
   if (!is_path_valid(path))
     return EINVAL;
@@ -222,7 +254,7 @@ int tree_create(Tree* tree, const char* path)
   if (!parent_path)
     return EEXIST;
 
-  parent = access_dir(tree, parent_path, edit_entry, reader_exit);
+  parent = access_dir(tree, parent_path, edit_entry, passedby, &passed_count);
   free(parent_path);
 
   /* The parent does not exist. */
@@ -242,6 +274,7 @@ int tree_create(Tree* tree, const char* path)
   hmap_insert(parent->subdirs, subdir->dir_name, subdir);
 
 exiting:
+  exit_monitors(passedby, passed_count, reader_exit);
   writer_exit(&parent->monit);
   return err;
 }
@@ -254,6 +287,8 @@ int tree_remove(Tree* tree, const char* path)
   char* parent_path;
   char last_component[MAX_DIR_NAME_LEN + 1];
   int err = 0;
+  Monitor* passedby[MAX_PATH_LEN / 2];
+  size_t passed_count;
 
   if (!is_path_valid(path))
     return EINVAL;
@@ -261,7 +296,7 @@ int tree_remove(Tree* tree, const char* path)
     return EBUSY;
 
   parent_path = make_path_to_parent(path, last_component);
-  parent = access_dir(tree, parent_path, edit_entry, reader_exit);
+  parent = access_dir(tree, parent_path, edit_entry, passedby, &passed_count);
   free(parent_path);
 
   if (!parent)
@@ -279,6 +314,7 @@ int tree_remove(Tree* tree, const char* path)
   tree_free(subdir);
 
 exiting:
+  exit_monitors(passedby, passed_count, reader_exit);
   writer_exit(&parent->monit);
   return err;
 }
@@ -295,27 +331,31 @@ exiting:
  * Translated to the actual tree: lock the LCA of target and source first.
  *
  * This function accesses both the contents under p1 and p2 and locks quite
- * writerly three dirs: those corresponding to paths and their LCA.
- * The caller should then unlock all of them themself via `writer_exit`.
+ * writerly the lca dir and readlocks its ancestors. As in other functions the
+ * array `passedby` of size `passed_count` will store those locked on the way.
  */
 static void double_access(const char* p1, const char* p2, Tree* tree,
-                          Tree** lca, Tree** t1, Tree** t2)
+                          Tree** lca, Tree** t1, Tree** t2,
+                          Monitor* passedby[], size_t* passed_count)
 {
   const char* p1lca;
   const char* p2lca;
+  Monitor* ignorepassed[MAX_PATH_LEN / 2];
+  size_t ignored;
+
   /* char* lca_path = path_lca(p1, p2); */
   char* lca_path = path_lca_move(p1, p2, &p1lca, &p2lca);
   printf("common_path = %s, restings=%s and %s\n", lca_path, p1lca, p2lca);
 
-  *lca = access_dir(tree, lca_path, edit_entry, reader_exit);
+  *lca = access_dir(tree, lca_path, edit_entry, passedby, passed_count);
   printf("%lu: got the lca ie %s!\n", pthread_self(), lca_path);
   /* Having locked the lca I am free to take the other two. */
   /* TODO search for p1 and p2 should be done from below LCA! */
   printf("%lu tring to acquire source par ie %s\n", pthread_self(), p1);
-  *t1 = access_dir(*lca, p1lca, edit_entry, reader_exit);
+  *t1 = access_dir(*lca, p1lca, chill_entry, ignorepassed, &ignored);
   printf("%lu: got the source parent ie %s!\n", pthread_self(), p1);
   printf("%lu tring to acquire targt par ie %s\n", pthread_self(), p2);
-  *t2 = access_dir(*lca, p2lca, edit_entry, reader_exit);
+  *t2 = access_dir(*lca, p2lca, chill_entry, ignorepassed, &ignored);
   printf("%lu got the target parent ie %s!\n", pthread_self(), p2);
 
   free(lca_path);
@@ -335,6 +375,8 @@ int tree_move(Tree* tree, const char* source, const char* target)
   char target_dir_name[MAX_DIR_NAME_LEN + 1];
   int err = 0;
   HashMap* tmp;
+  Monitor* passedby[MAX_PATH_LEN / 2];
+  size_t passed_count;
 
   if (!is_path_valid(source) || !is_path_valid(target))
     return EINVAL;
@@ -352,7 +394,7 @@ int tree_move(Tree* tree, const char* source, const char* target)
   }
 
   double_access(source_parent_path, target_parent_path, tree,
-                &lca, &source_parent, &target_parent);
+                &lca, &source_parent, &target_parent, passedby, &passed_count);
 
   free(source_parent_path);
   free(target_parent_path);
@@ -384,8 +426,8 @@ int tree_move(Tree* tree, const char* source, const char* target)
   tree_free(source_dir);
 
 exiting:
-  writer_exit(&source_parent->monit);
-  writer_exit(&target_parent->monit);
+  exit_monitors(passedby, passed_count, reader_exit);
+  /* only exiting the lca as we didn't lock others (we chill_entered them) */
   writer_exit(&lca->monit);
   return err;
 }
