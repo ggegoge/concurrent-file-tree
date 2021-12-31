@@ -318,6 +318,7 @@ void dumb_fucking_edgecase()
   int e2 = tree_create(tr, "/c/");
   int e3 = tree_move(tr, "/c/", "/c/");
   printf("errs: \"%s\", \"%s\", \"%s\"\n", strerror(e1), strerror(e2), strerror(e3));
+  tree_free(tr);
 }
 
 int main(void)

@@ -1,5 +1,7 @@
 /**
- * An interface for a monitor-like readers and writers locking mechanism.
+ * An interface for a monitor-like readers and writers locking mechanism
+ *
+ * aka "rwlock"
  *
  * It lets you enter and exit a monitor in both reader and writer style. Useful
  * for guarding objects from which you may want to read or write (duh...).
@@ -23,15 +25,13 @@ typedef struct Monitor {
   size_t wwait;
   size_t rcount;
   size_t wcount;
-  /* these two will help us with spurious wakeups (I hope) */
+  /* these two will help us with spurious wakeups and broadcasting (I hope) */
   size_t wwoken;
   size_t rwoken;
 } Monitor;
 
-
 /* All functions return an error code that is 0 in case of success or some errno
  * value otherwise. Usually it's what pthread_* functions returned. */
-
 
 /** Initialise a monitor. */
 int monit_init(Monitor* mon);
@@ -43,7 +43,7 @@ int monit_destroy(Monitor* mon);
 int writer_entry(Monitor* mon);
 
 /**
- * Exit the monitor when being a writer. This function should be called only if
+ * Exit the monitor as a writer. This function should be called only if
  * the monitor got previously acquired via `writer_entry` by the same thread.
  */
 int writer_exit(Monitor* mon);

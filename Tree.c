@@ -1,5 +1,5 @@
 /**
- * Implementation of the Tree.h interface for allowing (TODO concurrent) various
+ * Implementation of the Tree.h interface for allowing various concurrent
  * operations on a direcotry tree like structure.
  */
 
@@ -25,7 +25,7 @@
 /**
  * A macro for centralised function exiting with an error code. It assumes that
  * there is an `int err` declared previously and a label `exiting` at which it
- * should go had the function detected an error.
+ * should go had the function detected an error. All hail exceptions aight.
  */
 #define ERROR(errno)                            \
   do {                                          \
@@ -35,7 +35,7 @@
 
 /**
  * This is a recursive data structure representing a directory tree. It keeps
- * a monitor for access protection.
+ * a r&w monitor for access protection.
  */
 struct Tree {
   Monitor monit;
@@ -80,23 +80,24 @@ static Tree* new_dir(const char* dname)
 }
 
 /**
- * Find a directory under a `path` and lock it.
+ * Find a directory under a `path` and lock it and the path leading to it.
+ * 
  * The `entry_fn` function will be used to access each of the passed by dirs'
  * monitors. It returns an exit code and its parameters are the monitor in
  * question and a boolean flag telling whether it is visiting the target monitor
  * or one on the way.
  *
- * The `passedby` array will be filled with all of monitors that were entered
- * in the process (apart from the last one!).
+ * The `passedby` array will be filled with all monitors that were entered in
+ * the process (apart from the target one! It will be in the returned tree).
  * Its size will be stored under `passed_count`. Exiting them should be done by
  * the caller accordingly with how they've chosen to enter them.
  */
-static Tree* access_dir(Tree* root, const char* path,
+static Tree* access_dir(Tree* root, const char* target,
                         int entry_fn(Monitor*, bool),
                         Monitor* passedby[], size_t* passed_count)
 {
   char component[MAX_DIR_NAME_LEN + 1];
-  const char* subpath = path;
+  const char* subpath = target;
   Tree* next;
 
   *passed_count = 0;
@@ -127,7 +128,7 @@ static int exit_monitors(Monitor* mons[], size_t count, int exit_fn(Monitor*))
 {
   printf("%lu: EXIT %lu MONITORS\n", pthread_self(), count);
 
-  for (; count -- > 0; ) {
+  for (; count --> 0; ) {
     printf("%lu exiting pasedby[%lu]\n", pthread_self(), count);
     exit_fn(mons[count]);
   }
@@ -266,7 +267,6 @@ int tree_create(Tree* tree, const char* path)
   hmap_insert(parent->subdirs, subdir->dir_name, subdir);
 
 exiting:
-
   if (parent)
     writer_exit(&parent->monit);
 
@@ -309,7 +309,6 @@ int tree_remove(Tree* tree, const char* path)
   tree_free(subdir);
 
 exiting:
-
   if (parent)
     writer_exit(&parent->monit);
 
@@ -319,18 +318,19 @@ exiting:
 
 /**
  * If we think about it then this bears some resemblence to the classic hungry
- * philosophers problem. Each `tree_move` recquires posessing two ``forks''. In
+ * philosophers problem. Each `tree_move` recquires posessing two "forks". In
  * this analogy those are source's parent dir and target's parent dir. Naïve
  * sequential taking of the two forks one by one won't work as we may starve
  * ourselves with a fellow philosopher. Breaking the symetry is not really
  * possible neither.
  *
- * Solution: ``join the forks with a string and take the string.''
+ * Solution: "join the forks with a string and take the string".
  * Translated to the actual tree: lock the LCA of target and source first.
  *
- * This function accesses both the contents under p1 and p2 and locks quite
- * writerly the lca dir and readlocks its ancestors. As in other functions the
- * array `passedby` of size `passed_count` will store those locked on the way.
+ * This function accesses both the contents under p1 and p2 and locks writerly
+ * the lca dir and readlocks its ancestors (`edit_entry`). As in `access_dir`
+ * functions the array `passedby` of size `passed_count` will store those locked
+ * on the way.
  */
 static void double_access(const char* p1, const char* p2, Tree* tree,
                           Tree** lca, Tree** t1, Tree** t2,
@@ -340,8 +340,6 @@ static void double_access(const char* p1, const char* p2, Tree* tree,
   const char* p2lca;
   Monitor* ignorepassed[MAX_PATH_LEN / 2];
   size_t ignored;
-
-  /* char* lca_path = path_lca(p1, p2); */
   char* lca_path = path_lca_move(p1, p2, &p1lca, &p2lca);
   printf("common_path = %s, restings=%s and %s\n", lca_path, p1lca, p2lca);
 
@@ -424,8 +422,7 @@ int tree_move(Tree* tree, const char* source, const char* target)
   tree_free(source_dir);
 
 exiting:
-
-  /* only exiting the lca as we didn't lock others (we chill_entered them) */
+  /* only exiting the lca as we didn't lock others (we "chill_entered" them) */
   if (lca)
     writer_exit(&lca->monit);
 
@@ -433,26 +430,31 @@ exiting:
   return err;
 }
 
-/* list all contents recursively */
 void tree_tree(Tree* tree, int depth)
 {
-  HashMapIterator it = hmap_iterator(tree->subdirs);
+  HashMapIterator it;
   const char* subdir_name;
   void* subdir_ptr;
   Tree* subdir;
 
+  writer_entry(&tree->monit);
+
   if (!depth)
     printf("tree %s\n", tree->dir_name);
 
-  printf(" ");
+  putchar(' ');
 
   for (int i = 0; i < depth; ++i)
-    printf(" ");
+    putchar(' ');
 
-  printf("%s\n", tree->dir_name);
+  puts(tree->dir_name);
+
+  it = hmap_iterator(tree->subdirs);
 
   while (hmap_next(tree->subdirs, &it, &subdir_name, &subdir_ptr)) {
     subdir = (Tree*)subdir_ptr;
     tree_tree(subdir, depth + 1);
   }
+
+  writer_exit(&tree->monit);
 }

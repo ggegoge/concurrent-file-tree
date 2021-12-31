@@ -158,10 +158,10 @@ int reader_exit(Monitor* mon)
   --mon->rcount;
   assert(mon->wcount == 0);
 
-  /* last part of the conjunction: in case multiple readers got broadcasted but
-   * before all of them managed to enter some have already gotten here. They
-   * might like to wake up a writer even though there are still readers to come!
-   * therefore check rwoken to see if a reader awakening isn't taking place */
+  /* `&& mon->rwoken == 0`: in case multiple readers got broadcasted but before
+   * all of them managed to enter some have already gotten here. They might like
+   * to wake up a writer even though there are still readers to come!  therefore
+   * check rwoken to see if a reader awakening isn't taking place */
   if (mon->wcount == 0 && mon->rcount == 0 && mon->wwait > 0 && mon->rwoken == 0) {
     printf("reader %lu is waking up a writer cause wc=%lu rc=%lu ww=%lu\n",
            pthread_self(), mon->wcount, mon->rcount, mon->wwait);
