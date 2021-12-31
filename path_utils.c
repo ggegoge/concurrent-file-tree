@@ -143,7 +143,6 @@ char* make_map_contents_string(HashMap* map)
   return result;
 }
 
-/* return: p1 \subseteq p2? */
 bool is_subpath(const char* path1, const char* path2)
 {
   char comp1[MAX_DIR_NAME_LEN + 1];
@@ -156,26 +155,16 @@ bool is_subpath(const char* path1, const char* path2)
     sub2 = split_path(sub2, comp2);
 
     /* if path1 runs out before path2 and it had equal components up to now
-     * then it is indeed a subpath. */
-    if (!sub1)
+     * then it is indeed a subpath. We want proper subpath -> no eq */
+    if (!sub1 && !sub2)
+      return false;
+    else if (!sub1)
       return true;
     else if (!sub2)
       return false;
     else if (strcmp(comp1, comp2) != 0)
       return false;
   }
-}
-
-char* path_lca(const char* path1, const char* path2)
-{
-  size_t i;
-  size_t len1 = strlen(path1);
-  size_t len2 = strlen(path2);
-  size_t max_len = len1 > len2 ? len1 : len2;
-  for (i = 0; i < max_len && path1[i] == path2[i]; ++i)
-    ;
-
-  return strndup(path1, i);
 }
 
 char* path_lca_move(const char* p1, const char* p2,

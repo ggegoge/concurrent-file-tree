@@ -1,3 +1,6 @@
+
+/** Interface for a directory tree. */
+
 #ifndef _TREE_H_
 #define _TREE_H_
 
@@ -6,11 +9,11 @@
 /** Tried to move a directory into its descendant. */
 #define ESUBPATH -3
 
-/** Our tree type */
+/** Our directory tree type */
 typedef struct Tree Tree;
 
 /** Create a new heap-allocated tree. */
-Tree* tree_new();
+Tree* tree_new(void);
 
 /** Free all of the memory stored by a tree. */
 void tree_free(Tree*);
@@ -27,7 +30,7 @@ int tree_remove(Tree* tree, const char* path);
 /** Move a soruce subdirectory to a new target location. */
 int tree_move(Tree* tree, const char* source, const char* target);
 
-/** List all contents recursively. Similar to the commandline "tree" program. */
+/** Print out all contents recursively, kinda the commandline "tree" program. */
 void tree_tree(Tree* tree, int depth);
 
 #endif  /* _TREE_H_ */

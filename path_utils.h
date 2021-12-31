@@ -64,17 +64,9 @@ const char** make_map_contents_array(HashMap* map);
 char* make_map_contents_string(HashMap* map);
 
 /**
- * Test whether `path1` is a subpath of `path2`. Assumes both are valid
- * paths. */
+ * Test whether `path1` is a proper subpath of `path2`.
+ * Assumes both are valid paths. */
 bool is_subpath(const char* path1, const char* path2);
-
-/**
- * Find the lowest common ancestor of two paths. Will save path to the lca under
- * `lca`, assumes it is big enough and that `path1` and `path2` are both valid.
- *
- * The result should be freed by the caller.
- */
-char* path_lca(const char* path1, const char* path2);
 
 /**
  * Find the lowest common ancestor of two paths. Will save path to the lca under
