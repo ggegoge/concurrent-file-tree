@@ -121,8 +121,6 @@ void move_test_async()
   pthread_join(t[0], NULL);
   pthread_join(t[1], NULL);
 
-  tree_tree(tree, 0);
-
   tree_free(tree);
 }
 
