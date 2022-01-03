@@ -10,6 +10,8 @@
 bool is_path_valid(const char* path)
 {
   size_t len = strlen(path);
+  const char* name_start;
+  const char* name_end;
 
   if (len == 0 || len > MAX_PATH_LEN)
     return false;
@@ -17,12 +19,12 @@ bool is_path_valid(const char* path)
   if (path[0] != '/' || path[len - 1] != '/')
     return false;
 
-  const char* name_start = path +
-                           1; // Start of current path component, just after '/'.
+  /* Start of current path component, just after '/'. */
+  name_start = path + 1;
 
   while (name_start < path + len) {
-    char* name_end = strchr(name_start,
-                            '/'); // End of current path component, at '/'.
+    /* End of current path component, at '/'. */
+    name_end = strchr(name_start, '/');
 
     if (!name_end || name_end == name_start ||
         name_end > name_start + MAX_DIR_NAME_LEN)
@@ -40,13 +42,16 @@ bool is_path_valid(const char* path)
 
 const char* split_path(const char* path, char* component)
 {
-  const char* subpath = strchr(path + 1, '/'); // Pointer to second '/' character.
+  /* Pointer to second '/' character. */
+  const char* subpath = strchr(path + 1, '/');
+  size_t len;
 
-  if (!subpath) // Path is "/".
+  /* Path is "/". */
+  if (!subpath)
     return NULL;
 
   if (component) {
-    int len = subpath - (path + 1);
+    len = subpath - (path + 1);
     assert(len >= 1 && len <= MAX_DIR_NAME_LEN);
     strncpy(component, path + 1, len);
     component[len] = '\0';
@@ -58,8 +63,12 @@ const char* split_path(const char* path, char* component)
 char* make_path_to_parent(const char* path, char* component)
 {
   size_t len = strlen(path);
+  size_t subpath_len;
+  char* result;
+  size_t component_len;
 
-  if (len == 1) // Path is "/".
+  /* Path is "/". */
+  if (len == 1)
     return NULL;
 
   const char* p = path + len - 2; // Point before final '/' character.
@@ -68,13 +77,13 @@ char* make_path_to_parent(const char* path, char* component)
   while (*p != '/')
     p--;
 
-  size_t subpath_len = p - path + 1; // Include '/' at p.
-  char* result = malloc(subpath_len + 1); // Include terminating null character.
+  subpath_len = p - path + 1; // Include '/' at p.
+  result = malloc(subpath_len + 1); // Include terminating null character.
   strncpy(result, path, subpath_len);
   result[subpath_len] = '\0';
 
   if (component) {
-    size_t component_len = len - subpath_len - 1; // Skip final '/' as well.
+    component_len = len - subpath_len - 1; // Skip final '/' as well.
     assert(component_len >= 1 && component_len <= MAX_DIR_NAME_LEN);
     strncpy(component, p + 1, component_len);
     component[component_len] = '\0';
@@ -83,8 +92,10 @@ char* make_path_to_parent(const char* path, char* component)
   return result;
 }
 
-// A wrapper for using strcmp in qsort.
-// The arguments here are actually pointers to (const char*).
+/**
+ * A wrapper for using strcmp in qsort.
+ * The arguments here are actually pointers to (const char*).
+ */
 static int compare_string_pointers(const void* p1, const void* p2)
 {
   return strcmp(*(const char**)p1, *(const char**)p2);
@@ -102,7 +113,8 @@ const char** make_map_contents_array(HashMap* map)
     key++;
   }
 
-  *key = NULL; // Set last array element to NULL.
+  // Set last array element to NULL.
+  *key = NULL;
   qsort(result, n_keys, sizeof(char*), compare_string_pointers);
   return result;
 }
@@ -110,8 +122,11 @@ const char** make_map_contents_array(HashMap* map)
 char* make_map_contents_string(HashMap* map)
 {
   const char** keys = make_map_contents_array(map);
-
-  unsigned int result_size = 0; // Including ending null character.
+  char* result;
+  char* position;
+  size_t keylen;
+  // Including ending null character.
+  size_t result_size = 0;
 
   for (const char** key = keys; *key; ++key)
     result_size += strlen(*key) + 1;
@@ -119,17 +134,17 @@ char* make_map_contents_string(HashMap* map)
   // Return empty string if map is empty.
   if (!result_size) {
     free(keys);
-    // Note we can't just return "", as it can't be free'd.
+    /* Note we can't just return "", as it can't be free'd. */
     char* result = malloc(1);
     *result = '\0';
     return result;
   }
 
-  char* result = malloc(result_size);
-  char* position = result;
+  result = malloc(result_size);
+  position = result;
 
   for (const char** key = keys; *key; ++key) {
-    size_t keylen = strlen(*key);
+    keylen = strlen(*key);
     assert(position + keylen <= result + result_size);
     strcpy(position, *key); // NOLINT: array size already checked.
     position += keylen;
