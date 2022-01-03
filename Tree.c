@@ -8,11 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <pthread.h>
-#include <unistd.h>
-
 #include <assert.h>
-#include <stdio.h>
 
 #include "err.h"
 #include "HashMap.h"
@@ -39,7 +35,7 @@
  * a r&w monitor for access protection.
  */
 struct Tree {
-  Monitor monit;
+  Monitor mon;
   char* dir_name;
   HashMap* subdirs;
 };
@@ -70,7 +66,7 @@ static Tree* new_dir(const char* dname)
     return NULL;
   }
 
-  if (monit_init(&tree->monit)) {
+  if (monit_init(&tree->mon)) {
     free(tree->dir_name);
     hmap_free(tree->subdirs);
     free(tree);
@@ -102,31 +98,35 @@ static int access_dir(Tree* root, const char* target, Tree** dest,
                       Monitor* passedby[], size_t* passed_count)
 {
   char component[MAX_DIR_NAME_LEN + 1];
-  const char* subpath = target;
   Tree* next;
   int err;
 
   *passed_count = 0;
   *dest = root;
 
-  while ((subpath = split_path(subpath, component))) {
+  while ((target = split_path(target, component))) {
     if (!*dest)
       break;
 
-    err = entry_fn(&(*dest)->monit, false);
+    err = entry_fn(&(*dest)->mon, false);
 
     if (err) {
       *dest = NULL;
       return err;
     }
 
-    passedby[(*passed_count)++] = &(*dest)->monit;
+    passedby[(*passed_count)++] = &(*dest)->mon;
     next = hmap_get((*dest)->subdirs, component);
     *dest = next;
   }
 
   if (*dest)
-    entry_fn(&(*dest)->monit, true);
+    err = entry_fn(&(*dest)->mon, true);
+
+  if (err) {
+    *dest = NULL;
+    return err;
+  }
 
   return 0;
 }
@@ -138,7 +138,8 @@ static void exit_monitors(Monitor* mons[], size_t count, int exit_fn(Monitor*))
 
   for (; count --> 0; ) {
     err = exit_fn(mons[count]);
-    syserr(err, "Failed to exit %lu'th  monitor", count);
+    /* error in unlock of some parts of the tree it brokes beyond repair */
+    syserr(err, "exit_monitors: Failed to exit %lu'th  monitor", count);
   }
 }
 
@@ -176,7 +177,7 @@ static int list_entry(Monitor* mon, bool islast)
 static int chill_entry(Monitor* mon, bool islast)
 {
   (void)mon;
-  (void)(islast);
+  (void)islast;
   return 0;
 }
 
@@ -200,7 +201,7 @@ void tree_free(Tree* tree)
     tree_free(subdir);
   }
 
-  monit_destroy(&tree->monit);
+  monit_destroy(&tree->mon);
   hmap_free(tree->subdirs);
   free(tree->dir_name);
   free(tree);
@@ -226,7 +227,7 @@ char* tree_list(Tree* tree, const char* path)
 
   contents = make_map_contents_string(dir->subdirs);
 
-  reader_exit(&dir->monit);
+  reader_exit(&dir->mon);
   exit_monitors(passedby, passed_count, reader_exit);
 
   return contents;
@@ -276,7 +277,7 @@ int tree_create(Tree* tree, const char* path)
 
 exiting:
   if (parent)
-    writer_exit(&parent->monit);
+    writer_exit(&parent->mon);
 
   exit_monitors(passedby, passed_count, reader_exit);
   return err;
@@ -321,15 +322,15 @@ int tree_remove(Tree* tree, const char* path)
 
 exiting:
   if (parent)
-    writer_exit(&parent->monit);
+    writer_exit(&parent->mon);
 
   exit_monitors(passedby, passed_count, reader_exit);
   return err;
 }
 
 /**
- * If we think about it then this bears some resemblence to the classic hungry
- * philosophers problem. Each `tree_move` recquires posessing two "forks". In
+ * If we think about it then this bears some resemblance to the classic hungry
+ * philosophers problem. Each `tree_move` requires posessing two "forks". In
  * this analogy those are source's parent dir and target's parent dir. Naïve
  * sequential taking of the two forks one by one won't work as we may starve
  * ourselves with a fellow philosopher. Breaking the symetry is not really
@@ -390,7 +391,7 @@ int tree_move(Tree* tree, const char* source, const char* target)
   else if (strcmp(source, ROOT_PATH) == 0)
     return EBUSY;
   /* mv /a/b/ /a/b/c/ is stupid! */
-  else if (is_subpath(source, target))
+  else if (is_proper_subpath(source, target))
     return ESUBPATH;
 
   source_parent_path = make_path_to_parent(source, source_dir_name);
@@ -439,32 +440,8 @@ int tree_move(Tree* tree, const char* source, const char* target)
 exiting:
   /* only exiting the lca as we didn't lock others (we "chill_entered" them) */
   if (lca)
-    writer_exit(&lca->monit);
+    writer_exit(&lca->mon);
 
   exit_monitors(passedby, passed_count, reader_exit);
   return err;
-}
-
-void tree_tree(Tree* tree, int depth)
-{
-  HashMapIterator it;
-  const char* subdir_name;
-  void* subdir_ptr;
-  Tree* subdir;
-
-  writer_entry(&tree->monit);
-
-  for (int i = 0; i < depth; ++i)
-    putchar(' ');
-
-  puts(tree->dir_name);
-
-  it = hmap_iterator(tree->subdirs);
-
-  while (hmap_next(tree->subdirs, &it, &subdir_name, &subdir_ptr)) {
-    subdir = (Tree*)subdir_ptr;
-    tree_tree(subdir, depth + 1);
-  }
-
-  writer_exit(&tree->monit);
 }

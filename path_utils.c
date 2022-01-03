@@ -143,7 +143,7 @@ char* make_map_contents_string(HashMap* map)
   return result;
 }
 
-bool is_subpath(const char* path1, const char* path2)
+bool is_proper_subpath(const char* path1, const char* path2)
 {
   char comp1[MAX_DIR_NAME_LEN + 1];
   char comp2[MAX_DIR_NAME_LEN + 1];
@@ -174,6 +174,7 @@ char* path_lca_move(const char* p1, const char* p2,
   size_t len1 = strlen(p1);
   size_t len2 = strlen(p2);
   size_t max_len = len1 > len2 ? len1 : len2;
+
   for (i = 0; i < max_len && p1[i] == p2[i]; ++i)
     ;
 

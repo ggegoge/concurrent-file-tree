@@ -1,9 +1,7 @@
 
 #include <stddef.h>
 #include <pthread.h>
-
 #include <assert.h>
-#include <stdio.h>
 
 #include "err.h"
 #include "rw.h"
