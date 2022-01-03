@@ -370,19 +370,49 @@ static int double_access(const char* p1, const char* p2, Tree* tree,
   return 0;
 }
 
+/** The critical section of the moving process. */
+static int crit_tree_move(Tree* source_parent, Tree* target_parent,
+                          const char* source_dir_name,
+                          const char* target_dir_name)
+{
+  Tree* target_dir;
+  HashMap* tmp;
+  Tree* source_dir = hmap_get(source_parent->subdirs, source_dir_name);
+
+  if (!source_dir)
+    return ENOENT;
+
+  if (hmap_get(target_parent->subdirs, target_dir_name))
+    return EEXIST;
+
+  /* remove ourselves from one map and add to another */
+  hmap_remove(source_parent->subdirs, source_dir_name);
+  target_dir = new_dir(target_dir_name);
+
+  if (!target_dir)
+    return ENOMEM;
+
+  hmap_insert(target_parent->subdirs, target_dir->dir_name, target_dir);
+
+  /* move the contents now and get rid of the old dir */
+  tmp = target_dir->subdirs;
+  target_dir->subdirs = source_dir->subdirs;
+  source_dir->subdirs = tmp;
+  tree_free(source_dir);
+
+  return 0;
+}
+
 int tree_move(Tree* tree, const char* source, const char* target)
 {
   Tree* lca;
   Tree* source_parent;
   char* source_parent_path;
-  Tree* source_dir;
-  char source_dir_name[MAX_DIR_NAME_LEN + 1];
+  char source_name[MAX_DIR_NAME_LEN + 1];
   Tree* target_parent;
   char* target_parent_path;
-  Tree* target_dir;
-  char target_dir_name[MAX_DIR_NAME_LEN + 1];
+  char target_name[MAX_DIR_NAME_LEN + 1];
   int err = 0;
-  HashMap* tmp;
   Monitor* passedby[MAX_PATH_LEN / 2];
   size_t passed_count;
 
@@ -394,8 +424,8 @@ int tree_move(Tree* tree, const char* source, const char* target)
   else if (is_proper_subpath(source, target))
     return ESUBPATH;
 
-  source_parent_path = make_path_to_parent(source, source_dir_name);
-  target_parent_path = make_path_to_parent(target, target_dir_name);
+  source_parent_path = make_path_to_parent(source, source_name);
+  target_parent_path = make_path_to_parent(target, target_name);
 
   if (!target_parent_path) {
     free(source_parent_path);
@@ -414,28 +444,10 @@ int tree_move(Tree* tree, const char* source, const char* target)
   if (!lca || !source_parent || !target_parent)
     ERROR(ENOENT);
 
-  source_dir = hmap_get(source_parent->subdirs, source_dir_name);
+  err = crit_tree_move(source_parent, target_parent, source_name, target_name);
 
-  if (!source_dir)
-    ERROR(ENOENT);
-
-  if (hmap_get(target_parent->subdirs, target_dir_name))
-    ERROR(EEXIST);
-
-  /* remove ourselves from one map and add to another */
-  hmap_remove(source_parent->subdirs, source_dir_name);
-  target_dir = new_dir(target_dir_name);
-
-  if (!target_dir)
-    ERROR(ENOMEM);
-
-  hmap_insert(target_parent->subdirs, target_dir->dir_name, target_dir);
-
-  /* move the contents now and get rid of the old dir */
-  tmp = target_dir->subdirs;
-  target_dir->subdirs = source_dir->subdirs;
-  source_dir->subdirs = tmp;
-  tree_free(source_dir);
+  if (err)
+    ERROR(err);
 
 exiting:
   /* only exiting the lca as we didn't lock others (we "chill_entered" them) */
