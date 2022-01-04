@@ -94,8 +94,8 @@ static Tree* new_dir(const char* dname)
  * done by the caller accordingly with how they've chosen to enter them.
  */
 static int access_dir(Tree* root, const char* target, Tree** dest,
-                      int entry_fn(Monitor*, bool),
-                      Monitor* passedby[], size_t* passed_count)
+                      int entry_fn(Monitor*, bool), Monitor* passedby[],
+                      size_t* passed_count)
 {
   char component[MAX_DIR_NAME_LEN + 1];
   Tree* next;
@@ -138,7 +138,7 @@ static void exit_monitors(Monitor* mons[], size_t count, int exit_fn(Monitor*))
 
   for (; count --> 0; ) {
     err = exit_fn(mons[count]);
-    /* error in unlock of some parts of the tree it brokes beyond repair */
+    /* failure to unlock some parts of the tree breaks it beyond repair */
     syserr(err, "exit_monitors: Failed to exit %lu'th  monitor", count);
   }
 }
@@ -171,8 +171,8 @@ static int list_entry(Monitor* mon, bool islast)
 }
 
 /**
- * For using the `access_dir` without any protection. This function is a no-op
- * satisfying the `entry_fn` signature.
+ * For using the `access_dir` without any protection. This function is a mere
+ * no-op satisfying the `entry_fn` signature.
  */
 static int chill_entry(Monitor* mon, bool islast)
 {
@@ -182,20 +182,19 @@ static int chill_entry(Monitor* mon, bool islast)
 }
 
 /**
- * Take hold of two directories simultanously. If we think about it then this
- * bears some resemblance to the classic hungry philosophers problem. Each
- * `tree_move` requires posessing two "forks". In this analogy those are
- * source's parent dir and target's parent dir. Naïve sequential taking of the
- * two forks one by one won't work as we may starve ourselves with a fellow
- * philosopher. Breaking the symetry is not really possible neither.
+ * Take hold of two directories simultaneously. This bears some resemblance to
+ * the classic hungry philosophers problem where philosophers require posessing
+ * two forks. In this analogy those are two directories (eg. in `tree_move`).
+ * Naïve sequential taking of the two forks one by one won't work as we may
+ * starve ourselves with a fellow philosopher. Breaking the symetry is not
+ * really possible neither.
  *
- * Solution: "join the forks with a string and take the string".
- * Translated to the actual tree: lock the LCA of target and source first.
+ * Solution: join the forks with a string and take the string.
+ * Translated to the actual dir tree: lock the LCA of the directories first.
  *
- * This function accesses both the contents under p1 and p2 and locks writerly
- * the LCA dir and readlocks its ancestors (`edit_entry`). As in `access_dir`
- * functions the array `passedby` of size `passed_count` will store those locked
- * on the way. Returns an error code.
+ * This function accesses both the contents under `p1` and `p2` and locks
+ * writerly the `lca` dir and readlocks its ancestors (`edit_entry`). It does not
+ * however lock `t1` and `t2` (`chill_entry`).
  */
 static int double_access(const char* p1, const char* p2, Tree* tree,
                          Tree** lca, Tree** t1, Tree** t2,

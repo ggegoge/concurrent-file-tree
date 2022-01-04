@@ -6,10 +6,10 @@
 
 #include "HashMap.h"
 
-/* Max length of path (excluding terminating null character). */
+/** Max length of path (excluding terminating null character). */
 #define MAX_PATH_LEN 4095
 
-/* Max length of folder name (excluding terminating null character). */
+/** Max length of folder name (excluding terminating null character). */
 #define MAX_DIR_NAME_LEN 255
 
 /**
