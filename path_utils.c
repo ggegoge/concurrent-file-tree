@@ -71,14 +71,21 @@ char* make_path_to_parent(const char* path, char* component)
   if (len == 1)
     return NULL;
 
-  const char* p = path + len - 2; // Point before final '/' character.
+  /* Point before final '/' character. */
+  const char* p = path + len - 2;
 
-  // Move p to last-but-one '/' character.
+  /* Move p to last-but-one '/' character. */
   while (*p != '/')
     p--;
 
-  subpath_len = p - path + 1; // Include '/' at p.
-  result = malloc(subpath_len + 1); // Include terminating null character.
+  /* Include '/' at p. */
+  subpath_len = p - path + 1;
+  /* Include terminating null character. */
+  result = malloc(subpath_len + 1);
+
+  if (!result)
+    exit(1);
+
   strncpy(result, path, subpath_len);
   result[subpath_len] = '\0';
 
@@ -109,6 +116,9 @@ const char** make_map_contents_array(HashMap* map)
   const char** key = result;
   void* value = NULL;
 
+  if (!result)
+    exit(1);
+
   while (hmap_next(map, &it, key, &value)) {
     key++;
   }
@@ -136,11 +146,19 @@ char* make_map_contents_string(HashMap* map)
     free(keys);
     /* Note we can't just return "", as it can't be free'd. */
     char* result = malloc(1);
+
+    if (!result)
+      exit(1);
+
     *result = '\0';
     return result;
   }
 
   result = malloc(result_size);
+
+  if (!result)
+    exit(1);
+
   position = result;
 
   for (const char** key = keys; *key; ++key) {
@@ -182,8 +200,8 @@ bool is_proper_subpath(const char* path1, const char* path2)
   }
 }
 
-char* path_lca_move(const char* p1, const char* p2,
-                    const char** p1lca, const char** p2lca)
+char* path_lca(const char* p1, const char* p2,
+               const char** p1lca, const char** p2lca)
 {
   size_t i;
   size_t len1 = strlen(p1);

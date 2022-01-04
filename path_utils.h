@@ -24,13 +24,13 @@ bool is_path_valid(const char* path);
  * Return the subpath obtained by removing the first component.
  * Args:
  * - `path`: should be a valid path (see `is_path_valid`).
- * 
+ *
  * - `component`: if not NULL, should be a buffer of size at least
  *    MAX_DIR_NAME_LEN + 1.  Then the first component will be copied there
  *    (without any '/' characters).
  * If path is "/", returns NULL and leaves `component` unchanged.
  * Otherwise the returns a pointer into `path`, representing a valid subpath.
- * 
+ *
  * This can be used to iterate over all components of a path:
  *     char component[MAX_DIR_NAME_LEN + 1];
  *     const char* subpath = path;
@@ -75,7 +75,7 @@ bool is_proper_subpath(const char* path1, const char* path2);
  *
  * The result should be freed by the caller.
  */
-char* path_lca_move(const char* p1, const char* p2,
-                    const char** p1lca, const char** p2lca);
+char* path_lca(const char* p1, const char* p2,
+               const char** p1lca, const char** p2lca);
 
 #endif  /* _PATH_UTILS_H_ */

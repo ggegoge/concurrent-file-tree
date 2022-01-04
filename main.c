@@ -268,7 +268,7 @@ void test_lca()
   char* p2 = "/a/b/x/y/";
   const char* p1lca;
   const char* p2lca;  
-  char* lca_path = path_lca_move(p1, p2, &p1lca, &p2lca);
+  char* lca_path = path_lca(p1, p2, &p1lca, &p2lca);
   assert(is_path_valid(p1));
   assert(is_path_valid(p2));
   printf("common_path = %s, restings=%s and %s\n", lca_path, p1lca, p2lca);
@@ -276,7 +276,7 @@ void test_lca()
 
   p1 = "/";
   p2 = "/b/";
-  lca_path = path_lca_move(p1, p2, &p1lca, &p2lca);
+  lca_path = path_lca(p1, p2, &p1lca, &p2lca);
   assert(is_path_valid(p1));
   assert(is_path_valid(p2));
   printf("common_path = %s, restings=%s and %s\n", lca_path, p1lca, p2lca);
@@ -285,7 +285,7 @@ void test_lca()
 
   p1 = "/x/";
   p2 = "/b/";
-  lca_path = path_lca_move(p1, p2, &p1lca, &p2lca);
+  lca_path = path_lca(p1, p2, &p1lca, &p2lca);
   assert(is_path_valid(p1));
   assert(is_path_valid(p2));
   printf("common_path = %s, restings=%s and %s\n", lca_path, p1lca, p2lca);
@@ -293,7 +293,7 @@ void test_lca()
 
   p1 = "/x/";
   p2 = "/x/";
-  lca_path = path_lca_move(p1, p2, &p1lca, &p2lca);
+  lca_path = path_lca(p1, p2, &p1lca, &p2lca);
   assert(is_path_valid(p1));
   assert(is_path_valid(p2));
   printf("common_path = %s, restings=%s and %s\n", lca_path, p1lca, p2lca);
@@ -302,7 +302,7 @@ void test_lca()
   
   p1 = "/x/y/";
   p2 = "/x/";
-  lca_path = path_lca_move(p1, p2, &p1lca, &p2lca);
+  lca_path = path_lca(p1, p2, &p1lca, &p2lca);
   assert(is_path_valid(p1));
   assert(is_path_valid(p2));
   printf("common_path = %s, restings=%s and %s\n", lca_path, p1lca, p2lca);
