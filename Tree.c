@@ -22,7 +22,7 @@
 /**
  * A macro for centralised function exiting with an error code. It assumes that
  * there is an `int err` declared previously and a label `exiting` at which it
- * should go had the function detected an error. All hail exceptions aight.
+ * should go had the function detected an error. All hail exceptions innit.
  */
 #define ERROR(errno)                            \
   do {                                          \
