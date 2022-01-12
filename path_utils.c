@@ -203,14 +203,15 @@ char* path_lca(const char* p1, const char* p2,
                const char** p1lca, const char** p2lca)
 {
   size_t i;
+  size_t j;
   size_t len1 = strlen(p1);
   size_t len2 = strlen(p2);
   size_t max_len = len1 > len2 ? len1 : len2;
 
-  for (i = 0; i < max_len && p1[i] == p2[i]; ++i)
-    ;
+  for (j = 0, i = 0; i < max_len && p1[i] == p2[i]; ++i)
+    j = p1[i] == '/' ? i : j;
 
-  *p1lca = p1 + i - 1;
-  *p2lca = p2 + i - 1;
-  return strndup(p2, i);
+  *p1lca = p1 + j;
+  *p2lca = p2 + j;
+  return strndup(p2, j + 1);
 }

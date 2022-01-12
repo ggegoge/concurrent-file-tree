@@ -307,6 +307,15 @@ void test_lca()
   assert(is_path_valid(p2));
   printf("common_path = %s, restings=%s and %s\n", lca_path, p1lca, p2lca);
   free(lca_path);
+
+  p1 = "/a/b/c/d/";
+  p2 = "/a/b/chuj/d/";
+  lca_path = path_lca(p1, p2, &p1lca, &p2lca);
+  assert(is_path_valid(p1));
+  assert(is_path_valid(p2));
+  printf("common_path = %s, restings=%s and %s\n", lca_path, p1lca, p2lca);
+  free(lca_path);
+
 }
 
 void dumb_fucking_edgecase()
