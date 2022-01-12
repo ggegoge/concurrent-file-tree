@@ -99,7 +99,7 @@ static int access_dir(Tree* root, const char* target, Tree** dest,
 {
   char component[MAX_DIR_NAME_LEN + 1];
   Tree* next;
-  int err;
+  int err = 0;
 
   *passed_count = 0;
   *dest = root;
